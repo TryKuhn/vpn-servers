@@ -15,7 +15,7 @@ FROM python:3.12-slim AS builder
 
 # `build` is the PEP 517 build frontend. It calls hatchling under the hood
 # (per pyproject.toml's [build-system]) and produces a wheel into dist/.
-RUN pip install --no-cache-dir build==1.2.1
+RUN pip install --no-cache-dir build==1.2.1 hatchling==1.25.0
 
 WORKDIR /src
 
