@@ -24,6 +24,8 @@ classifiers = [
 dependencies = [
     "qrcode[pil]>=7.4",        # QR codes in terminal & PNG
     "platformdirs>=4.2",       # data dir resolution (cross-platform safety)
+    "grpcio>=1.60",                # gRPC client runtime
+    "protobuf>=4.25,<6",           # protobuf runtime
 ]
 
 [project.optional-dependencies]
@@ -33,6 +35,8 @@ dev = [
     "ruff>=0.4",                # linting + formatting in one tool
     "mypy>=1.10",
     "types-qrcode",             # type stubs
+    "grpcio-tools>=1.60",          # protoc + grpc plugin (for local development)
+    "types-protobuf",              # type stubs for protobuf
 ]
 
 [project.scripts]
@@ -41,6 +45,9 @@ vpn-user = "vpn_manager.cli.main:run"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vpn_manager"]
+include = [
+    "src/vpn_manager/**/*.py",  # explicit: include generated _pb2.py files
+]
 
 # ============================================================================
 # Tooling
@@ -73,6 +80,11 @@ python_version = "3.11"
 strict = true
 warn_unreachable = true
 disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "vpn_manager.xray._generated.*"
+ignore_errors = true
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

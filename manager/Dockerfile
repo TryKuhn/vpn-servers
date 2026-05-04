@@ -2,30 +2,49 @@
 #  vpn-manager Dockerfile (multi-stage)
 # ============================================================================
 #
-#  Stage 1 (builder): produces a wheel artifact from source.
-#  Stage 2 (runtime): minimal image with only the wheel installed.
+#  Stage 1 (builder):
+#    - Generates Python gRPC bindings from xray-core .proto files.
+#    - Builds the manager wheel including those bindings.
 #
-#  Final image is ~120 MB (vs ~250 MB if we shipped the build toolchain).
+#  Stage 2 (runtime):
+#    - Minimal image with only the wheel and runtime deps.
 # ============================================================================
+
+ARG XRAY_VERSION=v25.1.30
 
 # ----------------------------------------------------------------------------
 # Stage 1: builder
 # ----------------------------------------------------------------------------
 FROM python:3.12-slim AS builder
 
-# `build` is the PEP 517 build frontend. It calls hatchling under the hood
-# (per pyproject.toml's [build-system]) and produces a wheel into dist/.
-RUN pip install --no-cache-dir build==1.2.1 hatchling==1.25.0
+ARG XRAY_VERSION
+
+# We need git (to clone xray-core for proto files) and the build chain.
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        git \
+        && rm -rf /var/lib/apt/lists/*
+
+# Install build tools and grpcio-tools (for proto -> python codegen).
+RUN pip install --no-cache-dir \
+        build==1.2.1 \
+        hatchling==1.25.0 \
+        grpcio-tools==1.66.2
 
 WORKDIR /src
 
-# Copy source. We copy pyproject.toml first to give Docker a stable layer
-# even if only source code changes (in our case minor optimization since
-# we copy everything anyway, but a habit worth having).
+# Copy source.
 COPY pyproject.toml README.md ./
 COPY src/ src/
+COPY scripts/ scripts/
 
-# Build the wheel. After this, /src/dist/ contains exactly one .whl file.
+# Generate gRPC bindings. The script clones xray-core at $XRAY_VERSION
+# and writes Python bindings into src/vpn_manager/xray/_generated/.
+RUN XRAY_VERSION="${XRAY_VERSION}" bash scripts/generate-grpc.sh
+
+# Build the wheel. The wheel will include the just-generated bindings
+# because they live under src/vpn_manager/xray/_generated/ which is part
+# of the package.
 RUN python -m build --wheel --no-isolation
 
 # ----------------------------------------------------------------------------
@@ -33,50 +52,26 @@ RUN python -m build --wheel --no-isolation
 # ----------------------------------------------------------------------------
 FROM python:3.12-slim
 
-# Set sensible Python defaults for containers:
-#   PYTHONDONTWRITEBYTECODE=1  — no .pyc files (saves writes, harmless in container)
-#   PYTHONUNBUFFERED=1         — flush stdout immediately (critical for `docker logs`)
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Install runtime tools:
-#   - xray:    we use its `xray api` subcommand to talk to the xray container
-#              over gRPC. This is the simplest path; native gRPC in Python
-#              would require .proto files and generated bindings.
-#   - jq:      JSON manipulation in shell scripts (if any).
-#   - libqrencode-tools (qrencode): for terminal QR rendering.
-#
-# We also install xray itself by downloading the binary directly to avoid
-# pulling a whole separate image.
+# Minimal runtime tooling. Note: no `xray` binary anymore — we talk gRPC
+# directly. We keep qrencode for any future shell-based tooling, and jq
+# for ad-hoc debugging.
 RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
-        curl \
-        unzip \
         jq \
         qrencode \
         && rm -rf /var/lib/apt/lists/*
 
-# Install xray CLI binary. We pin a recent stable version to ensure
-# reproducible builds. Update XRAY_VERSION when there's a new release.
-ARG XRAY_VERSION=v25.1.30
-RUN curl -fsSL -o /tmp/xray.zip \
-        "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-linux-64.zip" && \
-    unzip -q /tmp/xray.zip xray -d /usr/local/bin/ && \
-    chmod +x /usr/local/bin/xray && \
-    rm /tmp/xray.zip
-
-# Copy the wheel from the builder stage and install it.
+# Install the wheel built in stage 1.
 COPY --from=builder /src/dist/*.whl /tmp/
 RUN pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl
 
-# Create a non-root user. We don't need root inside this container —
-# manager talks to xray via network (gRPC) and writes only to mounted volumes.
+# Non-root user.
 RUN useradd --create-home --shell /bin/bash --uid 1000 manager
 USER manager
 WORKDIR /home/manager
 
-# Default command: just sit there. Real work is invoked via `docker compose exec`.
-# We use `tail -f /dev/null` rather than `sleep infinity` because tail responds
-# to SIGTERM faster (clean shutdown).
 CMD ["tail", "-f", "/dev/null"]
