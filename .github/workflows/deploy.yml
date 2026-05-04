@@ -138,39 +138,68 @@ jobs:
           # ----------------------------------------------------------------
           # Healthcheck: wait for services to be healthy
           # ----------------------------------------------------------------
+          # We require:
+          #   1. xray   — docker health = "healthy"
+          #   2. manager — replies 200 to /health AND has not restarted
+          #
+          # The /health probe matters because docker only tells us the
+          # process started, not that uvicorn+FastAPI actually serve
+          # requests. RestartCount catches the case where the manager
+          # crashes & restarts in a loop fast enough to look "running"
+          # at any individual sample.
           echo "→ Waiting for services to be healthy..."
           DEADLINE=$(($(date +%s) + HEALTH_TIMEOUT))
           HEALTHY=0
 
+          # Snapshot manager's restart count at start; if it grows during
+          # the wait window, the container is crashing.
+          INITIAL_MANAGER_RESTARTS=$(docker inspect --format '{{.RestartCount}}' vpn-manager 2>/dev/null || echo 0)
+          echo "  manager initial restart count: $INITIAL_MANAGER_RESTARTS"
+
           while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-              # Both xray (with healthcheck) and manager need to be running.
-              # We accept "running" for manager since it has no healthcheck.
               XRAY_STATE=$(docker inspect --format '{{.State.Health.Status}}' vpn-xray 2>/dev/null || echo "missing")
               MANAGER_STATE=$(docker inspect --format '{{.State.Status}}' vpn-manager 2>/dev/null || echo "missing")
+              MANAGER_RESTARTS=$(docker inspect --format '{{.RestartCount}}' vpn-manager 2>/dev/null || echo 0)
 
-              if [ "$XRAY_STATE" = "healthy" ] && [ "$MANAGER_STATE" = "running" ]; then
-                  echo "✓ All services healthy"
-                  HEALTHY=1
+              # Has manager restarted while we were waiting? If yes,
+              # something inside it is crashing repeatedly.
+              RESTART_DELTA=$((MANAGER_RESTARTS - INITIAL_MANAGER_RESTARTS))
+              if [ "$RESTART_DELTA" -gt 2 ]; then
+                  echo "✗ Manager restarted $RESTART_DELTA times during deploy — failing fast"
                   break
               fi
 
-              echo "  xray=$XRAY_STATE manager=$MANAGER_STATE — waiting..."
+              if [ "$XRAY_STATE" = "healthy" ] && [ "$MANAGER_STATE" = "running" ]; then
+                  # Container looks ok at the docker level. Probe the
+                  # actual HTTP endpoint to confirm uvicorn is serving.
+                  if curl -fsS --max-time 3 http://127.0.0.1:8080/health >/dev/null 2>&1; then
+                      echo "✓ All services healthy (xray ok, manager /health ok)"
+                      HEALTHY=1
+                      break
+                  fi
+                  echo "  xray=$XRAY_STATE manager=$MANAGER_STATE /health=down — waiting..."
+              else
+                  echo "  xray=$XRAY_STATE manager=$MANAGER_STATE — waiting..."
+              fi
+
               sleep "$HEALTH_INTERVAL"
           done
 
           if [ "$HEALTHY" -ne 1 ]; then
               echo "✗ Services did not become healthy within ${HEALTH_TIMEOUT}s"
+              echo "✗ Final state:"
+              echo "    xray:    $XRAY_STATE"
+              echo "    manager: $MANAGER_STATE (restarts: $MANAGER_RESTARTS)"
+              echo "    /health: $(curl -sf --max-time 3 http://127.0.0.1:8080/health 2>&1 | head -1 || echo 'unreachable')"
               echo "✗ Rolling back to $OLD_COMMIT..."
 
               git reset --hard "$OLD_COMMIT"
               make up || echo "WARN: rollback 'make up' itself failed — manual intervention required"
 
-              # Fail the deployment job so the GitHub UI shows red.
               exit 1
           fi
 
           echo "✓ Deployment to $NEW_COMMIT successful"
-          REMOTE_SCRIPT
 
       # --------------------------------------------------------------------
       # 4. Cleanup SSH key (defense in depth — runner is ephemeral anyway)
