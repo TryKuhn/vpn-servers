@@ -9,7 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- **v0.6.0** — Anti-leak routing: block RU domains/IPs on the server side.
 - **v0.7.0** — Server-side ad blocking via geosite categories.
 - **v0.75.0** — Subscription URL server: clients import a single URL and receive
   a fully-configured client config.
@@ -17,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through the VPN, keep local traffic direct.
 - **v1.0.0** — Subscription billing with Telegram bot, recurring payments.
 
-## [0.6.0] — 2026-05-XX
+## [0.6.0] — 2026-05-04
 
 Server-side anti-leak: protect users from accidentally exposing their real
 identity through the VPN when accessing Russian services.
