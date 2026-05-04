@@ -98,6 +98,37 @@ jobs:
           # `reset --hard` rather than `pull` to handle force-pushes and
           # avoid merge conflicts in case of weird local state.
           git reset --hard origin/main
+          
+          # ----------------------------------------------------------------
+          # Pre-deploy: validate the rendered xray config BEFORE touching
+          # any running containers. If the config is bad, fail here and
+          # roll back git — the running stack is untouched.
+          # ----------------------------------------------------------------
+          echo "→ Validating rendered xray config..."
+
+          # Render config from template + .env, just like config-init does.
+          set -a; source .env; set +a
+          mkdir -p /tmp/deploy-validation
+          envsubst < config/xray/config.template.json \
+              > /tmp/deploy-validation/config.json
+
+          # Pin the same xray image we use in production so the validator
+          # matches the runtime. If the production image somehow can't be
+          # pulled, fail loudly here rather than at runtime.
+          XRAY_IMAGE="teddysun/xray:25.12.8"
+
+          if ! docker run --rm \
+                  -v /tmp/deploy-validation/config.json:/etc/xray/config.json:ro \
+                  "$XRAY_IMAGE" \
+                  xray run -test -c /etc/xray/config.json
+          then
+              echo "✗ Xray config validation failed"
+              echo "✗ Rolling back git to $OLD_COMMIT and aborting deploy..."
+              git reset --hard "$OLD_COMMIT"
+              exit 1
+          fi
+
+          echo "✓ Xray config valid, proceeding with deploy"
 
           echo "→ Bringing up services..."
           # `make up` will rebuild manager if Dockerfile changed and
