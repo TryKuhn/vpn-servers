@@ -1,0 +1,150 @@
+# ============================================================================
+#  Deploy to production
+# ============================================================================
+#
+#  Triggers:
+#    - Push to main → automatic deployment
+#    - Manual via "Run workflow" button → on demand
+#
+#  Strategy: deploy with auto-rollback on healthcheck failure.
+#  If services don't become healthy within HEALTH_TIMEOUT, the workflow
+#  reverts the server to the commit it was on before this deployment.
+# ============================================================================
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # adds a "Run workflow" button in the Actions UI
+
+# Don't run multiple deploys at once. If a new commit lands while a
+# deployment is in progress, GitHub queues it.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  HEALTH_TIMEOUT: 180  # seconds to wait for services to become healthy
+  HEALTH_INTERVAL: 5   # seconds between healthcheck polls
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # --------------------------------------------------------------------
+      # 1. Checkout (we don't need code locally, just GITHUB_SHA for log)
+      # --------------------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --------------------------------------------------------------------
+      # 2. Set up SSH key from secrets
+      # --------------------------------------------------------------------
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      # --------------------------------------------------------------------
+      # 3. Deploy with rollback
+      # --------------------------------------------------------------------
+      - name: Deploy
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          NEW_COMMIT: ${{ github.sha }}
+        run: |
+          # Run the entire deployment as a single ssh session.
+          # Heredoc is the cleanest way to send a multi-line script.
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" \
+              "DEPLOY_PATH='${DEPLOY_PATH}' \
+               NEW_COMMIT='${NEW_COMMIT}' \
+               HEALTH_TIMEOUT='${HEALTH_TIMEOUT}' \
+               HEALTH_INTERVAL='${HEALTH_INTERVAL}' \
+               bash -s" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+
+          cd "$DEPLOY_PATH"
+
+          # ----------------------------------------------------------------
+          # Save current state for potential rollback
+          # ----------------------------------------------------------------
+          OLD_COMMIT=$(git rev-parse HEAD)
+          echo "→ Current commit: $OLD_COMMIT"
+          echo "→ Target commit:  $NEW_COMMIT"
+
+          if [ "$OLD_COMMIT" = "$NEW_COMMIT" ]; then
+              echo "✓ Already at target commit, nothing to do"
+              exit 0
+          fi
+
+          # ----------------------------------------------------------------
+          # Pull and apply
+          # ----------------------------------------------------------------
+          echo "→ Fetching latest..."
+          git fetch origin main
+
+          echo "→ Resetting to origin/main..."
+          # `reset --hard` rather than `pull` to handle force-pushes and
+          # avoid merge conflicts in case of weird local state.
+          git reset --hard origin/main
+
+          echo "→ Bringing up services..."
+          # `make up` will rebuild manager if Dockerfile changed and
+          # auto-sync users.json (per our v0.5.1 fix).
+          make up
+
+          # ----------------------------------------------------------------
+          # Healthcheck: wait for services to be healthy
+          # ----------------------------------------------------------------
+          echo "→ Waiting for services to be healthy..."
+          DEADLINE=$(($(date +%s) + HEALTH_TIMEOUT))
+          HEALTHY=0
+
+          while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+              # Both xray (with healthcheck) and manager need to be running.
+              # We accept "running" for manager since it has no healthcheck.
+              XRAY_STATE=$(docker inspect --format '{{.State.Health.Status}}' vpn-xray 2>/dev/null || echo "missing")
+              MANAGER_STATE=$(docker inspect --format '{{.State.Status}}' vpn-manager 2>/dev/null || echo "missing")
+
+              if [ "$XRAY_STATE" = "healthy" ] && [ "$MANAGER_STATE" = "running" ]; then
+                  echo "✓ All services healthy"
+                  HEALTHY=1
+                  break
+              fi
+
+              echo "  xray=$XRAY_STATE manager=$MANAGER_STATE — waiting..."
+              sleep "$HEALTH_INTERVAL"
+          done
+
+          if [ "$HEALTHY" -ne 1 ]; then
+              echo "✗ Services did not become healthy within ${HEALTH_TIMEOUT}s"
+              echo "✗ Rolling back to $OLD_COMMIT..."
+
+              git reset --hard "$OLD_COMMIT"
+              make up || echo "WARN: rollback 'make up' itself failed — manual intervention required"
+
+              # Fail the deployment job so the GitHub UI shows red.
+              exit 1
+          fi
+
+          echo "✓ Deployment to $NEW_COMMIT successful"
+          REMOTE_SCRIPT
+
+      # --------------------------------------------------------------------
+      # 4. Cleanup SSH key (defense in depth — runner is ephemeral anyway)
+      # --------------------------------------------------------------------
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f ~/.ssh/id_ed25519
