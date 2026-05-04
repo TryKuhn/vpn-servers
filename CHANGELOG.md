@@ -9,12 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- **v0.7.0** — Server-side ad blocking via geosite categories.
 - **v0.75.0** — Subscription URL server: clients import a single URL and receive
   a fully-configured client config.
 - **v0.8.0** — Smart routing in subscription configs: route only foreign sites
   through the VPN, keep local traffic direct.
 - **v1.0.0** — Subscription billing with Telegram bot, recurring payments.
+
+## [0.7.0] — 2026-05-04
+
+Server-side ad blocking via geosite categories.
+
+### Added
+
+- **Ad/tracker blocking** in xray routing rules:
+  `geosite:category-ads-all` covers ~20,000 known ad and tracking domains
+  including Google Ads, YouTube Ads, Meta tracking, Yandex Metrica, and
+  others. Effect: fewer ads in browser, YouTube, social feeds.
+- **Documentation** for tuning ad-blocking aggressiveness or adding
+  domain-specific exceptions.
+
+### Notes
+
+- This is server-side filtering — no client configuration needed.
+- Some ads (especially those served from the same domain as content,
+  like YouTube's pre-roll injected into the video stream) cannot be
+  blocked at this layer. Client-side ad blockers complement this.
 
 ## [0.6.0] — 2026-05-04
 
