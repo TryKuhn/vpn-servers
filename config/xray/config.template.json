@@ -1,0 +1,60 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "api": {
+    "tag": "api",
+    "services": ["HandlerService", "LoggerService", "StatsService"]
+  },
+  "inbounds": [
+    {
+      "tag": "vless-in",
+      "listen": "0.0.0.0",
+      "port": ${SERVER_PORT},
+      "protocol": "vless",
+      "settings": {
+        "clients": [],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "${DEST}",
+          "xver": 0,
+          "serverNames": ["${SNI}"],
+          "privateKey": "${PRIVATE_KEY}",
+          "shortIds": ["${SHORT_ID}"]
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"],
+        "routeOnly": false
+      }
+    },
+    {
+      "tag": "api-inbound",
+      "listen": "127.0.0.1",
+      "port": 10085,
+      "protocol": "dokodemo-door",
+      "settings": {
+        "address": "127.0.0.1"
+      }
+    }
+  ],
+  "outbounds": [
+    { "protocol": "freedom", "tag": "direct" },
+    { "protocol": "blackhole", "tag": "block" }
+  ],
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": ["api-inbound"],
+        "outboundTag": "api"
+      }
+    ]
+  }
+}
