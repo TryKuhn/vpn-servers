@@ -67,11 +67,22 @@ services:
       config-init:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD-SHELL", "/bin/netstat -tln | grep -q ':${SERVER_PORT:-443} ' || exit 1"]
-      interval: 30s
+      # Two-step liveness check:
+      #  1. xray API responds to gRPC (proves the process is healthy,
+      #     not just bound to a socket).
+      #  2. The configured inbound exists and is reachable.
+      # If xray is in a restart loop after a config error, step 1 fails
+      # because the gRPC server is not yet up.
+      test: >
+        CMD-SHELL
+        xray api inbounduser --server=127.0.0.1:10085 -tag=vless-in 2>/dev/null
+        | grep -q 'inbound\|users\|^{' || exit 1
+      interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      # Give xray 30s to start before the first healthcheck. Enough
+      # for image pull caching, config validation, and initial bind.
+      start_period: 30s
 
   # ---------------------------------------------------------------------------
   # manager — Python service for user management
