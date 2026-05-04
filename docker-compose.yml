@@ -3,37 +3,53 @@
 # ============================================================================
 #
 #  Services:
-#    - xray:    the actual VLESS+Reality VPN server (host network, :443)
+#    - config-init: one-shot, renders xray config from template via envsubst
+#    - xray:        the actual VLESS+Reality VPN server (host network, :443)
 #
 #  In v0.5.x manager will be added here as a separate service.
 # ============================================================================
 
 services:
+  # ---------------------------------------------------------------------------
+  # config-init — render config.json from template
+  # ---------------------------------------------------------------------------
+  # Runs once on `docker compose up`, exits with 0. Must complete before xray
+  # starts. Uses a tiny alpine image with envsubst (from gettext package).
+  config-init:
+    image: alpine:3.20
+    container_name: vpn-config-init
+    restart: "no"
+    volumes:
+      - ./config/xray:/templates:ro
+      - ./data/xray:/output
+      - ./docker/xray/render-config.sh:/render.sh:ro
+    env_file:
+      - .env
+    # Install gettext (envsubst) and run the render script.
+    # `apk add` is fast on a minimal alpine image (~1s on a fresh pull).
+    command: >
+      sh -c "apk add --no-cache gettext > /dev/null && sh /render.sh"
+
+  # ---------------------------------------------------------------------------
+  # xray — the VPN server itself
+  # ---------------------------------------------------------------------------
   xray:
     image: teddysun/xray:latest
     container_name: vpn-xray
     restart: unless-stopped
-
-    # Host networking: simplest way to expose :443 with correct source IPs.
-    # The downside is no isolation, which is fine for a dedicated VPN VPS.
     network_mode: host
-
-    # Mount config template (read-only) and the data dir where the rendered
-    # config and runtime state live.
     volumes:
-      - ./config/xray:/templates:ro
       - ./data/xray:/etc/xray
       - ./docker/xray/entrypoint.sh:/entrypoint.sh:ro
-
-    # Pass all env vars from .env (SERVER_PORT, SNI, PRIVATE_KEY, ...)
     env_file:
       - .env
-
-    # Custom entrypoint: render config from template, then exec xray.
     entrypoint: ["/bin/sh", "/entrypoint.sh"]
 
-    # Health: xray serves a TCP listener on :443. We use a simple TCP probe.
-    # If you want stricter checks, consider netcat or a curl to the SNI domain.
+    # Wait for config-init to complete successfully before starting.
+    depends_on:
+      config-init:
+        condition: service_completed_successfully
+
     healthcheck:
       test: ["CMD-SHELL", "ss -tln | grep -q ':${SERVER_PORT:-443}' || exit 1"]
       interval: 30s
