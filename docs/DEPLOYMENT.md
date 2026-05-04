@@ -204,6 +204,52 @@ To exit the manager shell: `exit`.
 
 ## Day-to-day operations
 
+## Client setup recommendations
+
+Starting with v0.6, the server **rejects connections to RU domains and IPs**
+through the VPN. This protects users from accidentally exposing their real
+identity to Russian banking, government, or other sensitive services.
+
+### What this means for users
+
+If a client tries to access, say, `gosuslugi.ru` while the VPN is on:
+- The connection is **dropped at the server**.
+- The site fails to load.
+
+To get RU sites working **alongside** the VPN, users need to enable
+**split tunneling** in their client app:
+
+#### V2RayTun / v2rayNG (Android)
+
+Settings → Routing → Custom rules. Add:
+
+```
+direct: geosite:ru
+direct: geoip:ru
+direct: geoip:private
+proxy: any
+```
+
+This routes RU traffic directly through the user's ISP and everything
+else through the VPN.
+
+#### Hiddify (iOS / macOS)
+
+Hiddify has built-in "Russia" routing presets. Settings → Routing → choose
+the Russia profile.
+
+#### v2rayN (Windows)
+
+Routing → Add Rule. Same as above for V2RayTun.
+
+### What if a user can't / doesn't want to configure split tunneling?
+
+They can disconnect the VPN when accessing RU services and reconnect after.
+Less convenient, but no client config needed.
+
+> A future release (v0.8) will provide a single subscription URL that
+> auto-configures the client. Stay tuned.
+
 ### Add a user
 
 ```bash

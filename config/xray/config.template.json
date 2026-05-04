@@ -49,11 +49,28 @@
     { "protocol": "blackhole", "tag": "block" }
   ],
   "routing": {
+  "domainStrategy": "IPIfNonMatch",
     "rules": [
       {
         "type": "field",
         "inboundTag": ["api-inbound"],
         "outboundTag": "api"
+      },
+      {
+        "type": "field",
+        "outboundTag": "block",
+        "domain": [
+          "geosite:ru",
+          "geosite:category-gov-ru"
+        ]
+      },
+      {
+        "type": "field",
+        "outboundTag": "block",
+        "ip": [
+          "geoip:ru",
+          "geoip:private"
+        ]
       }
     ]
   }
