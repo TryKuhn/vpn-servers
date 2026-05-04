@@ -63,12 +63,22 @@ echo "→ Generating x25519 keypair via xray..."
 # Use the same image we'll use in production to ensure compatibility.
 key_output=$(docker run --rm teddysun/xray xray x25519)
 
-priv=$(echo "$key_output" | grep -oP 'Private key:\s*\K\S+')
-pub=$(echo "$key_output" | grep -oP 'Public key:\s*\K\S+')
+# xray output format has varied across versions:
+#   Older:  "Private key: ..."        / "Public key: ..."
+#   Newer:  "PrivateKey: ..."         / "Password (PublicKey): ..."
+# Match either by accepting "Private" with optional space and the literal
+# word "Key" (case-insensitive). Same for Public.
+priv=$(echo "$key_output" | grep -oP '(?i)private\s*key:?\s*\K\S+' | head -1)
+pub=$(echo "$key_output"  | grep -oP '(?i)public\s*key\)?:?\s*\K\S+' | head -1)
 
 if [[ -z "$priv" || -z "$pub" ]]; then
-    echo "ERROR: failed to parse xray x25519 output:" >&2
-    echo "$key_output" >&2
+    echo "ERROR: failed to parse xray x25519 output." >&2
+    echo "       This usually means xray's output format changed." >&2
+    echo "       Raw output was:" >&2
+    echo "       ----------------------------------------" >&2
+    echo "$key_output" | sed 's/^/       /' >&2
+    echo "       ----------------------------------------" >&2
+    echo "       Please open an issue with this output." >&2
     exit 1
 fi
 
