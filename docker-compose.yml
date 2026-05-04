@@ -5,16 +5,17 @@
 #  Services:
 #    - config-init: one-shot, renders xray config from template via envsubst
 #    - xray:        the actual VLESS+Reality VPN server (host network, :443)
+#    - manager:     Python service for user management (CLI today, more later)
 #
-#  In v0.5.x manager will be added here as a separate service.
+#  Network model: xray runs on host network (for clean :443 binding).
+#  Manager also runs on host network — it needs to reach xray's gRPC API
+#  at 127.0.0.1:10085 inside the same network namespace.
 # ============================================================================
 
 services:
   # ---------------------------------------------------------------------------
   # config-init — render config.json from template
   # ---------------------------------------------------------------------------
-  # Runs once on `docker compose up`, exits with 0. Must complete before xray
-  # starts. Uses a tiny alpine image with envsubst (from gettext package).
   config-init:
     image: alpine:3.20
     container_name: vpn-config-init
@@ -25,8 +26,6 @@ services:
       - ./docker/xray/render-config.sh:/render.sh:ro
     env_file:
       - .env
-    # Install gettext (envsubst) and run the render script.
-    # `apk add` is fast on a minimal alpine image (~1s on a fresh pull).
     command: >
       sh -c "apk add --no-cache gettext > /dev/null && sh /render.sh"
 
@@ -44,15 +43,42 @@ services:
     env_file:
       - .env
     entrypoint: ["/bin/sh", "/entrypoint.sh"]
-
-    # Wait for config-init to complete successfully before starting.
     depends_on:
       config-init:
         condition: service_completed_successfully
-
     healthcheck:
-      test: [ "CMD-SHELL", "/bin/netstat -tln | grep -q ':${SERVER_PORT:-443} ' || exit 1" ]
+      test: ["CMD-SHELL", "/bin/netstat -tln | grep -q ':${SERVER_PORT:-443} ' || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # manager — Python service for user management
+  # ---------------------------------------------------------------------------
+  manager:
+    build:
+      context: ./manager
+      dockerfile: Dockerfile
+    image: vpn-manager:latest
+    container_name: vpn-manager
+    restart: unless-stopped
+
+    # Host network: needed to reach xray's gRPC API on 127.0.0.1:10085.
+    # Without this, "127.0.0.1" inside the manager container would point to
+    # itself, not to the xray container.
+    network_mode: host
+
+    volumes:
+      # Mount data directory so manager can persist users.json and read
+      # the live xray config (for sync operations).
+      - ./data:/data
+
+    env_file:
+      - .env
+
+    # Manager waits for xray to be healthy before starting. This avoids
+    # spurious errors when manager tries to talk to xray's API too early.
+    depends_on:
+      xray:
+        condition: service_healthy
