@@ -26,6 +26,9 @@ dependencies = [
     "platformdirs>=4.2",       # data dir resolution (cross-platform safety)
     "grpcio>=1.60",                # gRPC client runtime
     "protobuf>=4.25,<6",           # protobuf runtime
+    "fastapi>=0.110",            # HTTP API framework
+    "uvicorn[standard]>=0.27",   # ASGI server
+    "httpx>=0.27",                # required by fastapi.testclient
 ]
 
 [project.optional-dependencies]

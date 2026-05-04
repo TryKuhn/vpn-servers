@@ -23,6 +23,7 @@ def test_to_dict_serializes_datetime_as_iso() -> None:
         name="alice",
         uuid="abc",
         email="alice@vpn",
+        subscription_token="test_token",
         created_at=datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC),
     )
     d = u.to_dict()
@@ -31,6 +32,7 @@ def test_to_dict_serializes_datetime_as_iso() -> None:
         "name": "alice",
         "uuid": "abc",
         "email": "alice@vpn",
+        "subscription_token": "test_token",
         "created_at": "2026-01-01T12:00:00+00:00",
     }
 
@@ -47,3 +49,24 @@ def test_user_is_frozen(alice: User) -> None:
 
     with pytest.raises(AttributeError):
         alice.name = "mallory"  # type: ignore[misc]
+
+def test_new_generates_unique_subscription_tokens() -> None:
+    """Each new user gets a different subscription token."""
+    a = User.new(name="a", uuid="u1")
+    b = User.new(name="b", uuid="u2")
+    assert a.subscription_token != b.subscription_token
+    assert len(a.subscription_token) > 30  # token_urlsafe(32) gives ~43 chars
+
+
+def test_from_dict_handles_legacy_users_without_token() -> None:
+    """Existing users from before subscription tokens get one generated."""
+    legacy_data = {
+        "name": "alice",
+        "uuid": "abc",
+        "email": "alice@vpn",
+        "created_at": "2026-01-01T12:00:00+00:00",
+        # no subscription_token
+    }
+    user = User.from_dict(legacy_data)
+    assert user.subscription_token  # not empty
+    assert len(user.subscription_token) > 30

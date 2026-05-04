@@ -2,32 +2,30 @@
 
 from __future__ import annotations
 
+import secrets
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 
+def _generate_subscription_token() -> str:
+    """Generate a cryptographically secure URL-safe token.
+
+    32 bytes → 256 bits of entropy → impossible to brute-force.
+    URL-safe base64 → fits in URLs without escaping.
+    """
+    return secrets.token_urlsafe(32)
+
+
 @dataclass(frozen=True, slots=True)
 class User:
-    """A VPN user.
-
-    Identified primarily by `name` (human-readable, e.g. "alice").
-    The `uuid` is the actual VLESS credential — anyone with it can
-    connect to the server as this user.
-
-    The `email` field is used by xray as an internal identifier in its
-    API; we generate it from the name as `{name}@vpn`. It is not a real
-    email address.
-    """
+    """A VPN user."""
 
     name: str
     uuid: str
     email: str
+    subscription_token: str
     created_at: datetime
-
-    # ------------------------------------------------------------------------
-    # Constructors
-    # ------------------------------------------------------------------------
 
     @classmethod
     def new(cls, name: str, uuid: str) -> User:
@@ -36,12 +34,9 @@ class User:
             name=name,
             uuid=uuid,
             email=f"{name}@vpn",
+            subscription_token=_generate_subscription_token(),
             created_at=datetime.now(tz=UTC),
         )
-
-    # ------------------------------------------------------------------------
-    # Serialization
-    # ------------------------------------------------------------------------
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a JSON-friendly dict."""
@@ -53,13 +48,15 @@ class User:
     def from_dict(cls, data: dict[str, Any]) -> User:
         """Reconstruct a User from its dict representation.
 
-        Raises:
-            KeyError: if required fields are missing.
-            ValueError: if `created_at` is not a valid ISO-8601 timestamp.
+        Backwards-compatible with users created before subscription tokens
+        existed: missing fields get freshly generated tokens.
         """
         return cls(
             name=data["name"],
             uuid=data["uuid"],
             email=data["email"],
+            # Backwards compat: legacy users without tokens get one generated.
+            # On the next save, the token will be persisted.
+            subscription_token=data.get("subscription_token") or _generate_subscription_token(),
             created_at=datetime.fromisoformat(data["created_at"]),
         )

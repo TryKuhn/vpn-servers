@@ -41,6 +41,9 @@ class Settings:
     # --- File paths (resolved to absolute) ----------------------------------
     data_dir: Path = field(default_factory=lambda: Path("/data"))
 
+    # --- Subscription server settings ---------------------------------------
+    subscription_base_url: str = "http://localhost:8080"
+
     @classmethod
     def from_env(cls) -> Settings:
         """Build Settings from environment variables.
@@ -62,7 +65,18 @@ class Settings:
             xray_api_addr=os.environ.get("XRAY_API_ADDR", "127.0.0.1:10085"),
             xray_inbound_tag=os.environ.get("XRAY_INBOUND_TAG", "vless-in"),
             data_dir=Path(os.environ.get("DATA_DIR", "/data")),
+            subscription_base_url=os.environ.get(
+                "SUBSCRIPTION_BASE_URL", "http://localhost:8080"
+            ),
         )
+
+    @property
+    def subscription_url(self) -> str:
+        """Base for building per-user subscription URLs.
+
+        e.g. settings.subscription_url + '/sub/' + token
+        """
+        return self.subscription_base_url.rstrip("/")
 
     # --- Derived paths ------------------------------------------------------
 

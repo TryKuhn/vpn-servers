@@ -45,34 +45,31 @@ def run(args: argparse.Namespace, service: UserService, settings: Settings) -> i
 
 
 def _print_single_user(user: User, settings: Settings) -> None:
-    """Print full output for a single user: link + QR."""
+    """Print full output for a single user: link + QR + subscription URL."""
     link = build_vless_link(user, settings)
+    sub_url = f"{settings.subscription_url}/sub/{user.subscription_token}"
+
     print(f"✓ User {user.name!r} created.")
     print()
-    print("VLESS link:")
-    print(link)
+    print("Subscription URL (recommended — auto-updates with smart routing):")
+    print(f"  {sub_url}")
     print()
-    print("QR code (scan with V2RayTun, Hiddify, etc.):")
-    print(render_qr_to_terminal(link))
+    print("VLESS link (legacy — no smart routing):")
+    print(f"  {link}")
+    print()
+    print("QR code (subscription URL):")
+    print(render_qr_to_terminal(sub_url))
 
 
 def _print_multiple_users(users: list[User], settings: Settings) -> None:
-    """Print compact output for multiple users: links only.
-
-    QR codes are not rendered to keep output readable when adding many
-    users at once. Use `vpn-user show NAME` to get a QR for any user.
-    """
+    """Print compact output: subscription URLs."""
     print(f"✓ Created {len(users)} user(s).")
     print()
-    print("VLESS links:")
+    print("Subscription URLs:")
     print()
-
-    # Compute name column width for alignment.
     name_w = max(len(u.name) for u in users)
-
     for user in users:
-        link = build_vless_link(user, settings)
-        print(f"  {user.name:<{name_w}}  {link}")
-
+        sub_url = f"{settings.subscription_url}/sub/{user.subscription_token}"
+        print(f"  {user.name:<{name_w}}  {sub_url}")
     print()
-    print("To get a QR code for any user: vpn-user show NAME")
+    print("To get a QR code: vpn-user show NAME")

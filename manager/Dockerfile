@@ -74,4 +74,9 @@ RUN useradd --create-home --shell /bin/bash --uid 1000 manager
 USER manager
 WORKDIR /home/manager
 
-CMD ["tail", "-f", "/dev/null"]
+# Start the HTTP API. CLI commands are still available via:
+#   docker compose exec manager vpn-user ...
+CMD ["uvicorn", "vpn_manager.api.server:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8080", \
+     "--log-level", "info"]

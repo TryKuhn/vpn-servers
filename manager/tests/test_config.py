@@ -30,12 +30,14 @@ def test_from_env_uses_optional_defaults(monkeypatch: pytest.MonkeyPatch) -> Non
         monkeypatch.setenv(name, "x" if name != "SERVER_PORT" else "443")
     monkeypatch.delenv("COUNTRY_FLAG", raising=False)
     monkeypatch.delenv("SERVER_TAG", raising=False)
+    monkeypatch.delenv("SUBSCRIPTION_BASE_URL", raising=False)
 
     s = Settings.from_env()
 
     assert s.country_flag == "🇫🇮"
     assert s.server_tag == "VPN"
     assert s.xray_api_addr == "127.0.0.1:10085"
+    assert s.subscription_base_url == "http://localhost:8080"
 
 
 def test_from_env_raises_on_missing_required(monkeypatch: pytest.MonkeyPatch) -> None:

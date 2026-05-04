@@ -24,12 +24,16 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 def run(args: argparse.Namespace, service: UserService, settings: Settings) -> int:
     user = service.get(args.name)
     link = build_vless_link(user, settings)
+    sub_url = f"{settings.subscription_url}/sub/{user.subscription_token}"
 
     print(f"User: {user.name}")
     print()
-    print("VLESS link:")
-    print(link)
+    print("Subscription URL:")
+    print(f"  {sub_url}")
     print()
-    print("QR code:")
-    print(render_qr_to_terminal(link))
+    print("VLESS link (legacy):")
+    print(f"  {link}")
+    print()
+    print("QR code (subscription URL):")
+    print(render_qr_to_terminal(sub_url))
     return 0
