@@ -9,7 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- **v0.55.0** — Automated deployment via GitHub Actions on push to main.
 - **v0.6.0** — Anti-leak routing: block RU domains/IPs on the server side.
 - **v0.7.0** — Server-side ad blocking via geosite categories.
 - **v0.75.0** — Subscription URL server: clients import a single URL and receive
@@ -17,6 +16,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **v0.8.0** — Smart routing in subscription configs: route only foreign sites
   through the VPN, keep local traffic direct.
 - **v1.0.0** — Subscription billing with Telegram bot, recurring payments.
+
+## [0.55.0] — 2026-05-04
+
+Automated deployment via GitHub Actions. The development loop is now:
+push to `main` → CI deploys → ~1 minute later changes are live in production.
+
+### Added
+
+- **Auto-deploy workflow** (`.github/workflows/deploy.yml`):
+  - Triggered on push to `main` and via manual "Run workflow" button.
+  - Concurrency-safe: parallel deploys are queued, not run simultaneously.
+  - Uses a dedicated `deploy` user on the server with narrow sudo scope.
+- **Auto-rollback on healthcheck failure**: if services don't reach `healthy`
+  within 3 minutes after deployment, the workflow reverts the server to the
+  previous commit and re-applies it.
+- **Server hardening for CI**:
+  - Dedicated `deploy` Linux user with SSH key auth only (no password).
+  - Production directory moved to `/opt/vpn-servers` (FHS-conformant).
+  - `vpn` user added to `deploy` group for diagnostic access.
+
+### Operational changes
+
+- Production now lives in `/opt/vpn-servers` (was `~/vpn`).
+- The legacy `~/vpn` directory was removed after the migration verified.
+
+## [0.5.1] — 2026-05-04
+
+Hotfix: prevent runtime user state loss after xray container restart.
+
+### Fixed
+
+- `make up` now automatically syncs `users.json` to xray's runtime after
+  bringing up the stack. Previously, restarting the stack would wipe xray's
+  in-memory user list, causing existing client links to fail with
+  `invalid request user id` until `vpn-user sync` was run manually.
+
+### Added
+
+- `make sync` Makefile target for explicit re-application of users.json.
 
 ## [0.5.0] — 2026-05-04
 
