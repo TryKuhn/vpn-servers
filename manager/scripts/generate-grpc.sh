@@ -116,7 +116,11 @@ if _HERE not in _sys.path:
     _sys.path.insert(0, _HERE)
 PYEOF
 
-echo "✓ Generated bindings:"
-find "$OUT_DIR" -name "*_pb2.py" -o -name "*_pb2_grpc.py" | sort | head -20
-echo "  ..."
-echo "  total: $(find "$OUT_DIR" -name "*.py" | wc -l) files"
+proto_modules=$(find "$OUT_DIR" -name "*_pb2.py" | wc -l)
+grpc_stubs=$(find "$OUT_DIR" -name "*_pb2_grpc.py" | wc -l)
+total_files=$(find "$OUT_DIR" -name "*.py" | wc -l)
+
+echo "✓ Generated $total_files Python files"
+echo "    proto modules: $proto_modules"
+echo "    gRPC stubs:    $grpc_stubs"
+echo "    output dir:    $OUT_DIR"
