@@ -59,4 +59,5 @@ Apache 2.0 — see [LICENSE](./LICENSE).
 ## Disclaimer
 
 This software is provided for educational and personal use. Operators are
-responsible for compliance with local laws regarding VPN operation and use.
+responsible for compliance with local laws regarding VPN operation and use."" 
+"_Auto-deploy verified on $(date +%F)._" 
