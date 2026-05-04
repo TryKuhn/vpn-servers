@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, call
 
 import pytest
 
+from vpn_manager.models.user import User
 from vpn_manager.services.user_service import UserService
 from vpn_manager.storage.users_store import (
     UserAlreadyExistsError,
@@ -51,7 +52,7 @@ def service(store: UsersStore, xray_mock: MagicMock) -> UserService:
 
 
 def test_add_creates_user_in_xray_and_storage(
-    service: UserService, xray_mock: MagicMock, store: UsersStore
+        service: UserService, xray_mock: MagicMock, store: UsersStore
 ) -> None:
     user = service.add("alice")
 
@@ -81,7 +82,7 @@ def test_add_rejects_duplicate_name(service: UserService) -> None:
 
 
 def test_add_rejects_duplicate_without_calling_xray(
-    service: UserService, xray_mock: MagicMock
+        service: UserService, xray_mock: MagicMock
 ) -> None:
     """Pre-flight check: don't bother xray if name is taken."""
     service.add("alice")
@@ -99,7 +100,7 @@ def test_add_rejects_duplicate_without_calling_xray(
 
 
 def test_add_does_not_persist_if_xray_rejects(
-    service: UserService, xray_mock: MagicMock, store: UsersStore
+        service: UserService, xray_mock: MagicMock, store: UsersStore
 ) -> None:
     """If xray fails, storage must not be touched."""
     xray_mock.add_user.side_effect = XrayApiError("xray is down")
@@ -111,7 +112,7 @@ def test_add_does_not_persist_if_xray_rejects(
 
 
 def test_add_handles_xray_already_exists(
-    service: UserService, xray_mock: MagicMock
+        service: UserService, xray_mock: MagicMock
 ) -> None:
     """Storage and xray are out of sync — surface a clear error."""
     xray_mock.add_user.side_effect = XrayUserAlreadyExistsError("dup in xray")
@@ -126,7 +127,7 @@ def test_add_handles_xray_already_exists(
 
 
 def test_remove_calls_xray_and_storage(
-    service: UserService, xray_mock: MagicMock, store: UsersStore
+        service: UserService, xray_mock: MagicMock, store: UsersStore
 ) -> None:
     service.add("alice")
     xray_mock.reset_mock()
@@ -144,7 +145,7 @@ def test_remove_nonexistent_raises(service: UserService) -> None:
 
 
 def test_remove_tolerates_user_missing_from_xray(
-    service: UserService, xray_mock: MagicMock, store: UsersStore
+        service: UserService, xray_mock: MagicMock, store: UsersStore
 ) -> None:
     """If xray says 'not found', we still proceed with storage removal."""
     service.add("alice")
@@ -182,7 +183,7 @@ def test_get_missing_raises(service: UserService) -> None:
 
 
 def test_sync_re_adds_all_users_to_xray(
-    service: UserService, xray_mock: MagicMock
+        service: UserService, xray_mock: MagicMock
 ) -> None:
     a = service.add("alice")
     b = service.add("bob")
@@ -195,7 +196,7 @@ def test_sync_re_adds_all_users_to_xray(
 
 
 def test_sync_skips_users_already_in_xray(
-    service: UserService, xray_mock: MagicMock
+        service: UserService, xray_mock: MagicMock
 ) -> None:
     """If xray already has a user, sync should not count it as 're-added'."""
     service.add("alice")
@@ -214,7 +215,7 @@ def test_sync_skips_users_already_in_xray(
 
 
 def test_sync_continues_on_individual_errors(
-    service: UserService, xray_mock: MagicMock
+        service: UserService, xray_mock: MagicMock
 ) -> None:
     """One bad user shouldn't stop the rest."""
     service.add("alice")
@@ -234,3 +235,77 @@ def test_sync_continues_on_individual_errors(
 
 def test_sync_on_empty_store(service: UserService) -> None:
     assert service.sync() == 0
+
+
+# ----------------------------------------------------------------------------
+# add_many
+# ----------------------------------------------------------------------------
+
+
+def test_add_many_creates_all_users(
+        service: UserService, xray_mock: MagicMock
+) -> None:
+    users = service.add_many(["alice", "bob", "charlie"])
+
+    assert len(users) == 3
+    assert [u.name for u in users] == ["alice", "bob", "charlie"]
+    assert xray_mock.add_user.call_count == 3
+
+
+def test_add_many_pre_validates_existing_names(
+        service: UserService, xray_mock: MagicMock
+) -> None:
+    """If any name already exists, NO users should be added."""
+    service.add("alice")
+    xray_mock.reset_mock()
+
+    with pytest.raises(UserAlreadyExistsError, match="alice"):
+        service.add_many(["bob", "alice", "charlie"])
+
+    # Crucially: bob and charlie were NOT added either, because
+    # pre-validation runs BEFORE any mutations.
+    assert xray_mock.add_user.call_count == 0
+    assert {u.name for u in service.list_all()} == {"alice"}
+
+
+def test_add_many_pre_validates_duplicate_names_in_batch(
+        service: UserService, xray_mock: MagicMock
+) -> None:
+    """Duplicates within the input list must be rejected upfront."""
+    with pytest.raises(UserAlreadyExistsError, match="Duplicate"):
+        service.add_many(["alice", "bob", "alice"])
+
+    assert xray_mock.add_user.call_count == 0
+    assert service.list_all() == []
+
+
+def test_add_many_empty_list(service: UserService, xray_mock: MagicMock) -> None:
+    """add_many([]) is a no-op."""
+    result = service.add_many([])
+    assert result == []
+    assert xray_mock.add_user.call_count == 0
+
+
+def test_add_many_partial_failure_keeps_earlier_users(
+        service: UserService, xray_mock: MagicMock
+) -> None:
+    """If xray fails midway, earlier-added users stay added.
+
+    Each user is its own unit of work; we don't roll back the batch.
+    """
+    # Make xray fail on the second user
+    call_count = {"n": 0}
+
+    def add_side_effect(user: User) -> None:
+        call_count["n"] += 1
+        if call_count["n"] == 2:
+            raise XrayApiError("simulated failure")
+
+    xray_mock.add_user.side_effect = add_side_effect
+
+    with pytest.raises(XrayApiError, match="simulated failure"):
+        service.add_many(["alice", "bob", "charlie"])
+
+    # alice was added successfully before the failure
+    names = {u.name for u in service.list_all()}
+    assert names == {"alice"}

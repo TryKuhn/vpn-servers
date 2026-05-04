@@ -174,3 +174,51 @@ class UserService:
 
         log.info("Sync complete: %d/%d users (re-)added", added, len(users))
         return added
+
+    def add_many(self, names: list[str]) -> list[User]:
+        """Add multiple users in a batch with pre-validation.
+
+        Pre-flight: check all names against storage. If any name is
+        already taken, raise UserAlreadyExistsError WITHOUT touching
+        anything. This guarantees an "all or nothing" experience for
+        the user — they don't end up with a partial set of new accounts.
+
+        Once pre-validation passes, users are added one at a time. If a
+        single add fails (xray rejection, network blip, etc.), already
+        added users stay added — we don't try to roll them back, since
+        each one is a complete unit of work.
+
+        Returns:
+            List of created users, in the same order as input names.
+
+        Raises:
+            UserAlreadyExistsError: if any input name is already taken.
+                In this case, NO users are added.
+            XrayApiError: if xray rejects an add midway. Earlier successful
+                adds are kept.
+        """
+        # --- Pre-validation: all-or-nothing semantics ---
+        existing = [name for name in names if self.store.exists(name)]
+        if existing:
+            raise UserAlreadyExistsError(
+                f"User(s) already exist: {', '.join(repr(n) for n in existing)}. "
+                f"No users were added."
+            )
+
+        # Also catch duplicates within the input list itself, e.g.
+        # `vpn-user add alice alice` would otherwise add the first one,
+        # then fail on the second with a confusing 'already exists'.
+        seen: set[str] = set()
+        duplicates = [n for n in names if n in seen or seen.add(n)]  # type: ignore[func-returns-value]
+        if duplicates:
+            raise UserAlreadyExistsError(
+                f"Duplicate name(s) in batch: {', '.join(repr(n) for n in duplicates)}"
+            )
+
+        # --- Add one at a time ---
+        created: list[User] = []
+        for name in names:
+            user = self.add(name)  # reuses single-user logic, including
+            # compensate-on-error
+            created.append(user)
+        return created
