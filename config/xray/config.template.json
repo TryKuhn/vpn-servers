@@ -49,12 +49,19 @@
     { "protocol": "blackhole", "tag": "block" }
   ],
   "routing": {
-  "domainStrategy": "IPIfNonMatch",
+    "domainStrategy": "IPIfNonMatch",
     "rules": [
       {
         "type": "field",
         "inboundTag": ["api-inbound"],
         "outboundTag": "api"
+      },
+      {
+        "type": "field",
+        "outboundTag": "block",
+        "domain": [
+          "geosite:category-ads-all"
+        ]
       },
       {
         "type": "field",

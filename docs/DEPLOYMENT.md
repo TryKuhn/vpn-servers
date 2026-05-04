@@ -304,6 +304,37 @@ docker compose exec manager vpn-user sync
 This is normally **automatic** — `make up` restarts everything cleanly. Only
 needed if you manually messed with xray's runtime.
 
+## Server-side ad blocking (since v0.7)
+
+The server filters out known advertising and tracking domains via the
+`geosite:category-ads-all` ruleset (~20,000 known ad/tracker domains
+including Google Ads, YouTube Ads, Meta tracking, Yandex Metrica, etc).
+
+This works **automatically** for all VPN traffic — no client config needed.
+Users will see fewer ads in YouTube, news sites, etc.
+
+### Disabling ad blocking (if needed)
+
+If a user reports that a website breaks because something legitimate is
+incorrectly classified as an ad:
+
+1. Identify the blocked domain by checking xray logs:
+```bash
+   make logs-xray | grep "rejected.*<domain>"
+```
+2. Either:
+   - Switch to the more conservative `geosite:category-ads` ruleset in
+     `config/xray/config.template.json`, OR
+   - Add a domain-specific exception above the ad-blocking rule:
+```json
+     {
+       "type": "field",
+       "outboundTag": "direct",
+       "domain": ["specific.example.com"]
+     }
+```
+3. Commit, push — autodeploy applies the change.
+
 ## Updating the server
 
 Pull the latest code and restart:
