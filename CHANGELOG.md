@@ -17,6 +17,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through the VPN, keep local traffic direct.
 - **v1.0.0** — Subscription billing with Telegram bot, recurring payments.
 
+## [0.6.0] — 2026-05-XX
+
+Server-side anti-leak: protect users from accidentally exposing their real
+identity through the VPN when accessing Russian services.
+
+### Added
+
+- **Routing rules** in xray config that block:
+  - `geosite:ru` — known Russian domains (mail.ru, yandex, vk, sberbank,
+    gosuslugi, etc.).
+  - `geosite:category-gov-ru` — government domains specifically.
+  - `geoip:ru` — IPs registered to Russian providers.
+  - `geoip:private` — private/local IP ranges (security: prevents
+    tunneling into the VPS's internal network).
+- **`domainStrategy: IPIfNonMatch`** for two-pass routing: domains first,
+  then resolve to IP and re-check. Catches domains not in geosite but
+  hosted on Russian IPs.
+- **Documentation** for client-side split tunneling, since blocking RU
+  on the server requires complementary client-side direct routing.
+
+### Behavior changes
+
+- **Existing client configs without split tunneling will lose access to
+  RU sites through the VPN.** Users must either configure direct routing
+  in their client (recommended) or disconnect VPN when accessing RU
+  services.
+
 ## [0.55.0] — 2026-05-04
 
 Automated deployment via GitHub Actions. The development loop is now:
