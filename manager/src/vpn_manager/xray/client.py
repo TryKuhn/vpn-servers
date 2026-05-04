@@ -1,23 +1,40 @@
-"""Client for Xray's gRPC API, accessed via the `xray api` CLI subcommand.
+"""Client for Xray's gRPC HandlerService.
 
-We use subprocess rather than native gRPC to avoid managing protobuf bindings
-across xray versions. The `xray` binary is installed in the manager container
-and acts as our bridge to the running xray service.
+Talks directly to xray's gRPC API on `xray_api_addr` to add/remove users
+without restarting xray.
 
-Future: when we need stats or live-monitoring (v1.0+), switch to a native
-gRPC client with generated bindings pinned to a specific xray version.
+Versioning: bindings are generated at build time from xray-core
+.proto files at the version pinned in the Dockerfile (XRAY_VERSION).
+The generated modules live under vpn_manager.xray._generated.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import subprocess
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
 
+import grpc
+from google.protobuf import message as protobuf_message
+
+# Trigger sys.path setup for generated modules' absolute imports.
+import vpn_manager.xray._generated  # noqa: F401  (side-effect import)
 from vpn_manager.config import Settings
 from vpn_manager.models.user import User
+
+# These imports must come AFTER the side-effect import above, or proto's
+# transitive imports (e.g. `from common.protocol import user_pb2`) will fail.
+# fmt: off
+from vpn_manager.xray._generated.app.proxyman.command import (
+    command_pb2,
+    command_pb2_grpc,
+)
+from vpn_manager.xray._generated.common.protocol import user_pb2
+from vpn_manager.xray._generated.common.serial import (
+    typed_message_pb2,
+)
+from vpn_manager.xray._generated.proxy.vless import account_pb2 as vless_pb2
+
+# fmt: on
 
 log = logging.getLogger(__name__)
 
@@ -44,26 +61,63 @@ class XrayUserNotFoundError(XrayApiError):
 
 
 # ----------------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------------
+
+# Fully-qualified protobuf type name for VLess account. xray's TypedMessage
+# uses these strings to identify which proto type is packed inside.
+_VLESS_ACCOUNT_TYPE = "xray.proxy.vless.Account"
+
+
+def _build_vless_account(uuid: str, flow: str = "xtls-rprx-vision") -> typed_message_pb2.TypedMessage:
+    """Build a TypedMessage wrapping a VLess account proto.
+
+    xray expects user accounts to be type-erased into TypedMessage so the
+    same User type can carry any protocol's account schema.
+    """
+    account = vless_pb2.Account(
+        id=uuid,
+        flow=flow,
+        encryption="none",
+    )
+    return typed_message_pb2.TypedMessage(
+        type=_VLESS_ACCOUNT_TYPE,
+        value=account.SerializeToString(),
+    )
+
+
+def _build_user_proto(user: User) -> user_pb2.User:
+    """Convert our domain User into the xray protobuf User."""
+    return user_pb2.User(
+        level=0,
+        email=user.email,
+        account=_build_vless_account(user.uuid),
+    )
+
+
+# ----------------------------------------------------------------------------
 # Client
 # ----------------------------------------------------------------------------
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass
 class XrayClient:
-    """Thin client around the `xray api` CLI subcommand.
+    """gRPC client for xray's HandlerService.
 
-    All methods are blocking. Operations are performed by spawning a short-lived
-    `xray api ...` subprocess, which talks to the running xray instance over
-    gRPC on `xray_api_addr`.
-
-    A new client is cheap to construct (it holds no resources, just config).
+    A single channel is opened lazily on first use and reused across calls.
+    For our scale (low QPS, single thread) this is fine; the channel is
+    thread-safe per gRPC docs.
     """
 
     settings: Settings
-
-    # Timeout for any single subprocess call. xray api is normally instant
-    # (<100ms); 5 seconds is a generous ceiling for a stuck/unresponsive server.
     timeout_seconds: float = 5.0
+
+    # Lazily initialized state. Marked as field with init=False so it's
+    # not part of __init__.
+    _channel: grpc.Channel | None = field(default=None, init=False, repr=False)
+    _stub: command_pb2_grpc.HandlerServiceStub | None = field(
+        default=None, init=False, repr=False
+    )
 
     # ------------------------------------------------------------------------
     # Public API
@@ -77,32 +131,14 @@ class XrayClient:
             XrayApiUnavailableError: if xray is not responding.
             XrayApiError: for any other failure.
         """
-        payload = {
-            "tag": self.settings.xray_inbound_tag,
-            "users": [
-                {
-                    "level": 0,
-                    "email": user.email,
-                    "account": {
-                        "type": "vless",
-                        "id": user.uuid,
-                        "flow": "xtls-rprx-vision",
-                        "encryption": "none",
-                    },
-                }
-            ],
-        }
-
-        try:
-            self._run("adu", payload)
-        except _SubprocessFailedError as e:
-            if "already exists" in e.stderr.lower():
-                raise XrayUserAlreadyExistsError(
-                    f"User {user.email!r} already exists in xray"
-                ) from e
-            raise XrayApiError(
-                f"Failed to add user {user.email!r}: {e.stderr.strip()}"
-            ) from e
+        op = command_pb2.AddUserOperation(user=_build_user_proto(user))
+        request = command_pb2.AlterInboundRequest(
+            tag=self.settings.xray_inbound_tag,
+            operation=_pack_operation(op),
+        )
+        self._call("AlterInbound (AddUser)", lambda: self._get_stub().AlterInbound(
+            request, timeout=self.timeout_seconds
+        ), email=user.email)
 
     def remove_user(self, email: str) -> None:
         """Remove a user from the running xray inbound.
@@ -112,95 +148,107 @@ class XrayClient:
             XrayApiUnavailableError: if xray is not responding.
             XrayApiError: for any other failure.
         """
-        payload = {
-            "tag": self.settings.xray_inbound_tag,
-            "email": email,
-        }
+        op = command_pb2.RemoveUserOperation(email=email)
+        request = command_pb2.AlterInboundRequest(
+            tag=self.settings.xray_inbound_tag,
+            operation=_pack_operation(op),
+        )
+        self._call("AlterInbound (RemoveUser)", lambda: self._get_stub().AlterInbound(
+            request, timeout=self.timeout_seconds
+        ), email=email)
 
-        try:
-            self._run("rmu", payload)
-        except _SubprocessFailedError as e:
-            stderr = e.stderr.lower()
-            if "not found" in stderr or "no such" in stderr:
-                raise XrayUserNotFoundError(
-                    f"User {email!r} not found in xray"
-                ) from e
-            raise XrayApiError(
-                f"Failed to remove user {email!r}: {e.stderr.strip()}"
-            ) from e
+    def close(self) -> None:
+        """Close the gRPC channel. Idempotent."""
+        if self._channel is not None:
+            self._channel.close()
+            self._channel = None
+            self._stub = None
 
     # ------------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------------
 
-    def _run(self, command: str, payload: dict[str, Any]) -> str:
-        """Invoke `xray api {command}` with the given JSON payload.
+    def _get_stub(self) -> command_pb2_grpc.HandlerServiceStub:
+        """Lazily create the gRPC stub. Reuses the channel across calls."""
+        if self._stub is None:
+            # Insecure channel: xray's API listens only on 127.0.0.1 inside
+            # the container, no TLS needed (and xray's API doesn't support
+            # it natively anyway).
+            self._channel = grpc.insecure_channel(self.settings.xray_api_addr)
+            self._stub = command_pb2_grpc.HandlerServiceStub(self._channel)
+        return self._stub
 
-        Returns stdout on success. Raises _SubprocessFailed (an internal
-        marker exception) for non-zero exit codes; the public methods
-        translate that into domain errors.
+    def _call(
+        self,
+        op_name: str,
+        rpc: object,  # callable returning the response; typed loosely to keep mypy happy
+        *,
+        email: str,
+    ) -> None:
+        """Execute an RPC and translate gRPC errors into our domain errors.
+
+        Centralizes the boilerplate of error mapping so add/remove stay short.
         """
-        argv = [
-            "xray",
-            "api",
-            command,
-            f"--server={self.settings.xray_api_addr}",
-            "--",
-            json.dumps(payload),
-        ]
-
-        log.debug("xray api: %s", argv)
-
         try:
-            result = subprocess.run(
-                argv,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout_seconds,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as e:
+            rpc()  # type: ignore[operator]
+        except grpc.RpcError as e:
+            self._raise_from_grpc(e, op_name=op_name, email=email)
+
+    def _raise_from_grpc(
+        self,
+        err: grpc.RpcError,
+        *,
+        op_name: str,
+        email: str,
+    ) -> None:
+        """Translate a grpc.RpcError into the appropriate domain exception."""
+        # grpc.RpcError instances are also Call objects with code() and details()
+        code: grpc.StatusCode = err.code()  # type: ignore[attr-defined]
+        details: str = err.details() or ""  # type: ignore[attr-defined]
+        details_lower = details.lower()
+
+        log.debug("gRPC %s failed: code=%s details=%s", op_name, code, details)
+
+        # Connection errors -> XrayApiUnavailableError.
+        if code in (
+            grpc.StatusCode.UNAVAILABLE,
+            grpc.StatusCode.DEADLINE_EXCEEDED,
+        ):
             raise XrayApiUnavailableError(
-                f"xray api timed out after {self.timeout_seconds}s "
-                f"(is xray running on {self.settings.xray_api_addr}?)"
-            ) from e
-        except FileNotFoundError as e:
-            # `xray` binary not on PATH. Should never happen in our container,
-            # but worth catching with a clear message.
-            raise XrayApiError(
-                "xray binary not found on PATH. "
-                "Are you running this inside the manager container?"
-            ) from e
+                f"Cannot reach xray at {self.settings.xray_api_addr}: {details}"
+            ) from err
 
-        if result.returncode != 0:
-            # Detect connection failures: gRPC client errors when xray is down
-            # typically include strings like "connection refused" or
-            # "transport is closing".
-            stderr = result.stderr or ""
-            if (
-                "connection refused" in stderr.lower()
-                or "transport" in stderr.lower()
-            ):
-                raise XrayApiUnavailableError(
-                    f"Cannot reach xray at {self.settings.xray_api_addr}: "
-                    f"{stderr.strip()}"
-                )
-            raise _SubprocessFailedError(stderr=stderr, returncode=result.returncode)
+        # Already-exists / not-found are signalled by xray as INTERNAL or
+        # UNKNOWN with descriptive details. We match by string.
+        if "already exists" in details_lower:
+            raise XrayUserAlreadyExistsError(
+                f"User {email!r} already exists in xray"
+            ) from err
+        if "not found" in details_lower or "no such" in details_lower:
+            raise XrayUserNotFoundError(
+                f"User {email!r} not found in xray"
+            ) from err
 
-        return result.stdout
+        # Fallback: generic error with the gRPC details preserved.
+        raise XrayApiError(
+            f"{op_name} failed: code={code.name}, details={details}"
+        ) from err
 
 
 # ----------------------------------------------------------------------------
-# Internal marker exception
+# Module-level helpers
 # ----------------------------------------------------------------------------
 
 
-@dataclass
-class _SubprocessFailedError(Exception):
-    """Internal: raised by _run for non-zero exits, translated by callers."""
+def _pack_operation(op: protobuf_message.Message) -> typed_message_pb2.TypedMessage:
+    """Wrap an Add/Remove operation in TypedMessage for AlterInboundRequest.
 
-    stderr: str
-    returncode: int
-
-    def __str__(self) -> str:
-        return f"xray api exited {self.returncode}: {self.stderr}"
+    xray's AlterInboundRequest.operation is a TypedMessage so the same
+    request can carry any operation type. We need to fully-qualify the
+    type name so xray knows what to deserialize.
+    """
+    type_name = op.DESCRIPTOR.full_name
+    return typed_message_pb2.TypedMessage(
+        type=type_name,
+        value=op.SerializeToString(),
+    )

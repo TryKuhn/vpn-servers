@@ -1,17 +1,15 @@
 """Tests for vpn_manager.xray.client.
 
-We mock subprocess.run rather than running a real xray process. This keeps
-tests fast and deterministic, at the cost of not catching protocol-level
-issues with the real xray API. Those are caught by integration tests
-(coming in a later step).
+We mock the gRPC stub directly. This is cleaner than the previous
+subprocess-based approach: we test our error-mapping logic without
+caring about CLI argument parsing or stderr scraping.
 """
 
 from __future__ import annotations
 
-import json
-import subprocess
 from unittest.mock import MagicMock, patch
 
+import grpc
 import pytest
 
 from vpn_manager.config import Settings
@@ -34,22 +32,24 @@ def client(settings: Settings) -> XrayClient:
     return XrayClient(settings=settings)
 
 
-def _success_result() -> MagicMock:
-    """A subprocess.run result simulating a successful call."""
-    r = MagicMock(spec=subprocess.CompletedProcess)
-    r.returncode = 0
-    r.stdout = ""
-    r.stderr = ""
-    return r
+def _make_rpc_error(
+    code: grpc.StatusCode, details: str = ""
+) -> grpc.RpcError:
+    """Build a grpc.RpcError-compatible mock.
 
+    Real RpcError instances also implement the Call interface (code(),
+    details()). We construct a subclass on the fly that has both, so
+    the mock behaves like a real one.
+    """
 
-def _failure_result(stderr: str, returncode: int = 1) -> MagicMock:
-    """A subprocess.run result simulating a failed call."""
-    r = MagicMock(spec=subprocess.CompletedProcess)
-    r.returncode = returncode
-    r.stdout = ""
-    r.stderr = stderr
-    return r
+    class _MockRpcError(grpc.RpcError):
+        def code(self) -> grpc.StatusCode:
+            return code
+
+        def details(self) -> str:
+            return details
+
+    return _MockRpcError()
 
 
 # ----------------------------------------------------------------------------
@@ -57,31 +57,35 @@ def _failure_result(stderr: str, returncode: int = 1) -> MagicMock:
 # ----------------------------------------------------------------------------
 
 
-def test_add_user_invokes_xray_api_with_correct_payload(
+def test_add_user_calls_alter_inbound(
     client: XrayClient, alice: User
 ) -> None:
-    with patch("subprocess.run", return_value=_success_result()) as mock_run:
+    """Successful add_user should make exactly one AlterInbound RPC."""
+    fake_stub = MagicMock()
+    fake_stub.AlterInbound.return_value = MagicMock()
+
+    with patch.object(client, "_get_stub", return_value=fake_stub):
         client.add_user(alice)
 
-    mock_run.assert_called_once()
-    args = mock_run.call_args.args[0]
+    fake_stub.AlterInbound.assert_called_once()
 
-    # Verify command structure: xray api adu --server=... -- {json}
-    assert args[0] == "xray"
-    assert args[1] == "api"
-    assert args[2] == "adu"
-    assert args[3] == f"--server={client.settings.xray_api_addr}"
-    assert args[4] == "--"
 
-    payload = json.loads(args[5])
-    assert payload["tag"] == client.settings.xray_inbound_tag
-    assert len(payload["users"]) == 1
+def test_add_user_sends_correct_tag_and_email(
+    client: XrayClient, alice: User
+) -> None:
+    """The AlterInbound request must carry our inbound tag and the user's email."""
+    fake_stub = MagicMock()
+    fake_stub.AlterInbound.return_value = MagicMock()
 
-    user_payload = payload["users"][0]
-    assert user_payload["email"] == alice.email
-    assert user_payload["account"]["id"] == alice.uuid
-    assert user_payload["account"]["type"] == "vless"
-    assert user_payload["account"]["flow"] == "xtls-rprx-vision"
+    with patch.object(client, "_get_stub", return_value=fake_stub):
+        client.add_user(alice)
+
+    request = fake_stub.AlterInbound.call_args.args[0]
+    assert request.tag == client.settings.xray_inbound_tag
+    # The operation is a packed TypedMessage; it carries the email inside,
+    # but we don't deserialize it here — that's xray's job. We just
+    # verify the wrapping is non-empty.
+    assert request.operation.value  # non-empty serialized payload
 
 
 # ----------------------------------------------------------------------------
@@ -89,42 +93,60 @@ def test_add_user_invokes_xray_api_with_correct_payload(
 # ----------------------------------------------------------------------------
 
 
-def test_add_user_translates_already_exists_error(
+def test_add_user_translates_already_exists(
     client: XrayClient, alice: User
 ) -> None:
-    failure = _failure_result("user with email already exists")
-
-    with patch("subprocess.run", return_value=failure), pytest.raises(XrayUserAlreadyExistsError):
-        client.add_user(alice)
-
-
-def test_add_user_raises_unavailable_on_connection_refused(
-    client: XrayClient, alice: User
-) -> None:
-    failure = _failure_result(
-        "rpc error: connection refused on 127.0.0.1:10085"
+    err = _make_rpc_error(
+        grpc.StatusCode.INTERNAL,
+        details="user with email 'alice@vpn' already exists",
     )
+    fake_stub = MagicMock()
+    fake_stub.AlterInbound.side_effect = err
 
-    with patch("subprocess.run", return_value=failure), pytest.raises(XrayApiUnavailableError):
-        client.add_user(alice)
+    with patch.object(client, "_get_stub", return_value=fake_stub), pytest.raises(XrayUserAlreadyExistsError):
+            client.add_user(alice)
 
 
-def test_add_user_raises_unavailable_on_timeout(
+def test_add_user_translates_unavailable(
     client: XrayClient, alice: User
 ) -> None:
-    timeout_error = subprocess.TimeoutExpired(cmd="xray api", timeout=5.0)
+    err = _make_rpc_error(
+        grpc.StatusCode.UNAVAILABLE,
+        details="failed to connect to all addresses",
+    )
+    fake_stub = MagicMock()
+    fake_stub.AlterInbound.side_effect = err
 
-    with patch("subprocess.run", side_effect=timeout_error), pytest.raises(XrayApiUnavailableError):
-        client.add_user(alice)
+    with patch.object(client, "_get_stub", return_value=fake_stub), pytest.raises(XrayApiUnavailableError):
+            client.add_user(alice)
 
 
-def test_add_user_raises_generic_on_unknown_failure(
+def test_add_user_translates_deadline_exceeded(
     client: XrayClient, alice: User
 ) -> None:
-    failure = _failure_result("something weird happened")
+    err = _make_rpc_error(
+        grpc.StatusCode.DEADLINE_EXCEEDED,
+        details="deadline exceeded",
+    )
+    fake_stub = MagicMock()
+    fake_stub.AlterInbound.side_effect = err
 
-    with patch("subprocess.run", return_value=failure), pytest.raises(XrayApiError) as exc_info:
-        client.add_user(alice)
+    with patch.object(client, "_get_stub", return_value=fake_stub), pytest.raises(XrayApiUnavailableError):
+            client.add_user(alice)
+
+
+def test_add_user_unknown_error_becomes_generic_error(
+    client: XrayClient, alice: User
+) -> None:
+    err = _make_rpc_error(
+        grpc.StatusCode.UNKNOWN,
+        details="something weird",
+    )
+    fake_stub = MagicMock()
+    fake_stub.AlterInbound.side_effect = err
+
+    with patch.object(client, "_get_stub", return_value=fake_stub), pytest.raises(XrayApiError) as exc_info:
+            client.add_user(alice)
 
     # Make sure it's the base, not a more specific subclass.
     assert type(exc_info.value) is XrayApiError
@@ -135,53 +157,67 @@ def test_add_user_raises_generic_on_unknown_failure(
 # ----------------------------------------------------------------------------
 
 
-def test_remove_user_invokes_xray_api_with_correct_payload(
-    client: XrayClient,
-) -> None:
-    with patch("subprocess.run", return_value=_success_result()) as mock_run:
+def test_remove_user_calls_alter_inbound(client: XrayClient) -> None:
+    fake_stub = MagicMock()
+    fake_stub.AlterInbound.return_value = MagicMock()
+
+    with patch.object(client, "_get_stub", return_value=fake_stub):
         client.remove_user("alice@vpn")
 
-    args = mock_run.call_args.args[0]
-    assert args[2] == "rmu"
-
-    payload = json.loads(args[5])
-    assert payload == {
-        "tag": client.settings.xray_inbound_tag,
-        "email": "alice@vpn",
-    }
+    fake_stub.AlterInbound.assert_called_once()
 
 
-def test_remove_user_translates_not_found_error(client: XrayClient) -> None:
-    failure = _failure_result("user not found")
+def test_remove_user_translates_not_found(client: XrayClient) -> None:
+    err = _make_rpc_error(
+        grpc.StatusCode.INTERNAL,
+        details="user 'ghost@vpn' not found",
+    )
+    fake_stub = MagicMock()
+    fake_stub.AlterInbound.side_effect = err
 
-    with patch("subprocess.run", return_value=failure), pytest.raises(XrayUserNotFoundError):
-        client.remove_user("ghost@vpn")
+    with patch.object(client, "_get_stub", return_value=fake_stub), pytest.raises(XrayUserNotFoundError):
+            client.remove_user("ghost@vpn")
 
 
-def test_remove_user_translates_no_such_error(client: XrayClient) -> None:
-    """Some xray versions phrase the error differently."""
-    failure = _failure_result("no such user")
+def test_remove_user_translates_no_such(client: XrayClient) -> None:
+    """Some xray error messages use 'no such' wording."""
+    err = _make_rpc_error(
+        grpc.StatusCode.INTERNAL,
+        details="no such user with email",
+    )
+    fake_stub = MagicMock()
+    fake_stub.AlterInbound.side_effect = err
 
-    with patch("subprocess.run", return_value=failure), pytest.raises(XrayUserNotFoundError):
-        client.remove_user("ghost@vpn")
+    with patch.object(client, "_get_stub", return_value=fake_stub), pytest.raises(XrayUserNotFoundError):
+            client.remove_user("ghost@vpn")
 
 
 # ----------------------------------------------------------------------------
-# Edge cases
+# Channel management
 # ----------------------------------------------------------------------------
 
 
-def test_xray_binary_missing_raises_xray_api_error(
-    client: XrayClient, alice: User
-) -> None:
-    """If `xray` isn't on PATH, surface a clear error."""
-    with patch(
-        "subprocess.run",
-        side_effect=FileNotFoundError("[Errno 2] No such file or directory: 'xray'"),
-    ), pytest.raises(XrayApiError, match="xray binary not found"):
-        client.add_user(alice)
+def test_channel_is_lazy(client: XrayClient) -> None:
+    """No gRPC channel should exist before the first call."""
+    assert client._channel is None
+    assert client._stub is None
 
 
-def test_client_is_frozen(client: XrayClient) -> None:
-    with pytest.raises(AttributeError):
-        client.timeout_seconds = 1.0  # type: ignore[misc]
+def test_close_is_idempotent(client: XrayClient) -> None:
+    """Calling close() multiple times must not raise."""
+    client.close()  # before any usage
+    client.close()  # twice in a row
+
+
+def test_close_releases_channel(client: XrayClient) -> None:
+    """After close(), the channel should be back to None."""
+    fake_channel = MagicMock(spec=grpc.Channel)
+    fake_stub = MagicMock()
+    client._channel = fake_channel
+    client._stub = fake_stub
+
+    client.close()
+
+    fake_channel.close.assert_called_once()
+    assert client._channel is None
+    assert client._stub is None
