@@ -1,31 +1,42 @@
+# ============================================================================
+#  vpn-servers — docker-compose
+# ============================================================================
+#
+#  Services:
+#    - xray:    the actual VLESS+Reality VPN server (host network, :443)
+#
+#  In v0.5.x manager will be added here as a separate service.
+# ============================================================================
+
 services:
   xray:
     image: teddysun/xray:latest
-    container_name: trykuhn-xray
+    container_name: vpn-xray
     restart: unless-stopped
-    network_mode: host
-    volumes:
-      - ./data/xray:/etc/xray
-    command: ["xray", "run", "-c", "/etc/xray/config.json"]
-    depends_on:
-      - config-init
 
-  config-init:
-    image: alpine:latest
+    # Host networking: simplest way to expose :443 with correct source IPs.
+    # The downside is no isolation, which is fine for a dedicated VPN VPS.
+    network_mode: host
+
+    # Mount config template (read-only) and the data dir where the rendered
+    # config and runtime state live.
     volumes:
       - ./config/xray:/templates:ro
-      - ./data/xray:/output
-    env_file: .env
-    command: |
-      sh -c "apk add --no-cache gettext && 
-             envsubst < /templates/config.template.json > /output/config.json"
+      - ./data/xray:/etc/xray
+      - ./docker/xray/entrypoint.sh:/entrypoint.sh:ro
 
-  manager:
-    build: ./docker/manager
-    container_name: trykuhn-manager
-    restart: unless-stopped
-    network_mode: host
-    volumes:
-      - ./data:/data
-      - ./scripts/vpn-user:/usr/local/bin/vpn-user:ro
-    env_file: .env
+    # Pass all env vars from .env (SERVER_PORT, SNI, PRIVATE_KEY, ...)
+    env_file:
+      - .env
+
+    # Custom entrypoint: render config from template, then exec xray.
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+
+    # Health: xray serves a TCP listener on :443. We use a simple TCP probe.
+    # If you want stricter checks, consider netcat or a curl to the SNI domain.
+    healthcheck:
+      test: ["CMD-SHELL", "ss -tln | grep -q ':${SERVER_PORT:-443}' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

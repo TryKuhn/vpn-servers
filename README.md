@@ -2,47 +2,55 @@
 
 Self-hosted VPN infrastructure based on Xray (VLESS + Reality protocol).
 
-Production-ready setup for personal VPN servers, designed to be easy to deploy
-on any Linux VPS via Docker. Comes with a Python-based management API for
+Production-ready setup for personal VPN servers, deployable on any Linux VPS
+via Docker. Comes with a Python-based management API (coming in v0.5.0) for
 zero-downtime user operations.
 
 ## Features
 
 - **VLESS + Reality** — modern, censorship-resistant protocol that masks traffic
   as TLS to a legitimate website.
-- **Zero-downtime user management** — add/remove users without dropping existing
-  connections, via Xray gRPC API.
 - **Dockerized** — single `make up` to spin up a node.
-- **Multi-user** — manage many users on a single server with friendly CLI.
-- **Anti-leak routing** — block requests to RU domains/IPs to prevent accidental
-  exposure of users' real identity (coming in v0.6).
-- **Ad blocking** — server-side filtering of known ad domains (coming in v0.7).
-- **Smart routing** — selectively route traffic through VPN to look less
-  suspicious to DPI systems (coming in v0.8).
+- **Idempotent setup** — `make install` on a fresh VPS handles dependencies,
+  firewall, and Docker.
 
-## Status
+### Coming soon
 
-🚧 **Active development.** See [CHANGELOG.md](./CHANGELOG.md) for the release
-history and upcoming features.
+- Zero-downtime user management via Xray gRPC API (v0.5.0)
+- Anti-leak routing for RU domains/IPs (v0.6.0)
+- Server-side ad blocking (v0.7.0)
+- Subscription URL server (v0.75.0)
+- Smart routing in client configs (v0.8.0)
+- Telegram-bot billing with recurring payments (v1.0.0)
+
+See [CHANGELOG.md](./CHANGELOG.md) for the full roadmap.
 
 ## Quick start
 
-> Docker-based deployment will be available in v0.5.0. Until then, this repo
-> is a work-in-progress.
+On a fresh Ubuntu 22.04 / 24.04 VPS:
 
 ```bash
+# 1. Clone the repo
 git clone https://github.com/TryKuhn/vpn-servers.git
 cd vpn-servers
-cp .env.example .env
-# edit .env: set SERVER_IP, SNI, etc.
-make init      # generate keys
-make up        # start the server
-make add USER=alice
+
+# 2. Bootstrap the server (Docker, UFW, tools)
+sudo make install
+
+# 3. Configure (creates .env from template)
+make init      # this will create .env if missing, then prompt to edit it
+nano .env      # set SERVER_IP, choose SNI, etc.
+make init      # generate Reality keys (rerun after editing .env)
+
+# 4. Start the server
+make up
+make status    # check it's running
+make logs      # see xray output
 ```
 
 ## Architecture
 
-See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for a high-level overview.
+See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the high-level overview.
 
 ## License
 
