@@ -67,6 +67,13 @@ up: ## Start all services
 	docker compose up -d --build
 	@echo ""
 	@echo "✓ Services starting. Check status with: make status"
+	@echo "→ Waiting for services to be healthy..."
+	@sleep 10
+	@if docker compose ps --format json 2>/dev/null | grep -q '"State":"running"'; then \
+		echo "→ Re-syncing users.json to xray runtime..."; \
+		docker compose exec -T manager vpn-user sync 2>/dev/null || \
+			echo "  (skipped — first run, no users yet)"; \
+	fi
 
 .PHONY: down
 down: ## Stop all services
@@ -79,6 +86,10 @@ restart: ## Restart all services
 .PHONY: status
 status: ## Show service status
 	@docker compose ps
+
+.PHONY: sync
+sync: ## Re-apply users.json to running xray (after restart)
+	@docker compose exec manager vpn-user sync
 
 .PHONY: logs
 logs: ## Tail logs from all services (Ctrl+C to exit)

@@ -280,6 +280,17 @@ If only the xray config template changed:
 make down && make up
 ```
 
+### After any restart of xray
+
+xray's runtime user state is wiped on container restart. **`make up`
+automatically re-syncs `users.json` to xray runtime**, so this is rarely
+something you need to do manually. But if you ever see `rejected: invalid
+request user id` in xray logs, run:
+
+```bash
+docker compose exec manager vpn-user sync
+```
+
 ## Troubleshooting
 
 ### `make status` shows `vpn-xray (unhealthy)`
