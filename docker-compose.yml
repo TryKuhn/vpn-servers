@@ -1,0 +1,31 @@
+services:
+  xray:
+    image: teddysun/xray:latest
+    container_name: trykuhn-xray
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./data/xray:/etc/xray
+    command: ["xray", "run", "-c", "/etc/xray/config.json"]
+    depends_on:
+      - config-init
+
+  config-init:
+    image: alpine:latest
+    volumes:
+      - ./config/xray:/templates:ro
+      - ./data/xray:/output
+    env_file: .env
+    command: |
+      sh -c "apk add --no-cache gettext && 
+             envsubst < /templates/config.template.json > /output/config.json"
+
+  manager:
+    build: ./docker/manager
+    container_name: trykuhn-manager
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./data:/data
+      - ./scripts/vpn-user:/usr/local/bin/vpn-user:ro
+    env_file: .env
