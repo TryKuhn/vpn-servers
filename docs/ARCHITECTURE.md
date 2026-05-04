@@ -8,29 +8,6 @@ This project provides a self-hosted VPN node based on
 
 A node consists of three components running together via Docker Compose:
 
-```
-┌────────────────────────────────────────────────────┐
-│                 VPS (Linux + Docker)               │
-│                                                    │
-│   ┌────────────┐         ┌──────────────────┐      │
-│   │    xray    │◀─gRPC──▶│ manager (Python) │      │
-│   │  (VLESS +  │ :10085  │   FastAPI + CLI  │      │
-│   │   Reality) │         │                  │      │
-│   │  :443/tcp  │         └─────────┬────────┘      │
-│   └────────────┘                   │               │
-│          ▲                         ▼               │
-│          │                 ┌──────────────┐        │
-│          │                 │   ./data/    │        │
-│          │                 │  users.json  │        │
-│          │                 │  config.json │        │
-│          │                 └──────────────┘        │
-└──────────┼─────────────────────────────────────────┘
-           │
-           │ TLS-looking traffic on :443
-           ▼
-        Internet
-```
-
 ```mermaid
 flowchart TB
     subgraph VPS["VPS (Linux + Docker)"]
