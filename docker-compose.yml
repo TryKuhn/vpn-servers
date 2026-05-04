@@ -80,7 +80,7 @@ services:
     build:
       context: ./manager
       dockerfile: Dockerfile
-    image: vpn-manager:latest
+    image: vpn-manager:25.12.8
     container_name: vpn-manager
     restart: unless-stopped
 
