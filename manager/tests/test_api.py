@@ -34,6 +34,7 @@ def test_subscription_returns_base64_vless_link(
 ) -> None:
     response = client.get(f"/sub/{alice.subscription_token}")
     assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
 
     decoded = base64.b64decode(response.text).decode("utf-8")
     assert decoded.startswith("vless://")

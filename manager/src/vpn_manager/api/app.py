@@ -10,7 +10,7 @@ from __future__ import annotations
 import base64
 import logging
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 
 from vpn_manager.config import Settings
 from vpn_manager.models.user import User
@@ -41,26 +41,17 @@ def create_app(settings: Settings, store: UsersStore) -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/sub/{token}")
-    def subscription(token: str) -> str:
+    def subscription(token: str) -> Response:
         """Return the user's subscription as a base64-encoded VLESS link.
 
-        Format note: most VLESS clients (V2RayTun, Hiddify, v2rayN)
-        support two subscription content types:
-
-          1. Plain or base64-encoded list of vless:// URIs (one per line).
-          2. Full xray-core JSON config.
-
-        For Step A we return the simplest form: a single base64 vless://
-        URI. Step C (smart routing) will switch to JSON to include
-        routing rules.
+        Returns plain text (not JSON) because VLESS clients expect raw
+        base64 content. Subscription content type is application/x-vless
+        by convention.
         """
         user = _resolve_user(token, store)
         link = build_vless_link(user, settings)
-
-        # Subscription content per V2Ray/Xray convention is base64-encoded.
-        # Multiple links would be newline-separated. We have one for now.
         encoded = base64.b64encode(link.encode("utf-8")).decode("ascii")
-        return encoded
+        return Response(content=encoded, media_type="text/plain")
 
     return app
 
