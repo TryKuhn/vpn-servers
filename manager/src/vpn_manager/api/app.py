@@ -7,7 +7,7 @@ periodically for config updates.
 
 from __future__ import annotations
 
-import base64
+import json
 import logging
 
 from fastapi import FastAPI, HTTPException, Response
@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Response
 from vpn_manager.config import Settings
 from vpn_manager.models.user import User
 from vpn_manager.storage.users_store import UsersStore
-from vpn_manager.utils.vless_link import build_vless_link
+from vpn_manager.utils.client_config import build_client_config
 
 log = logging.getLogger(__name__)
 
@@ -42,17 +42,16 @@ def create_app(settings: Settings, store: UsersStore) -> FastAPI:
 
     @app.get("/sub/{token}")
     def subscription(token: str) -> Response:
-        """Return the user's subscription as a base64-encoded VLESS link.
+        """Return the user's full xray client config as JSON.
 
-        Returns plain text (not JSON) because VLESS clients expect raw
-        base64 content. Subscription content type is application/x-vless
-        by convention.
+        The client (V2RayTun, Hiddify, v2rayN) imports this URL and uses the
+        JSON as its complete xray configuration — including routing rules
+        that handle split tunneling automatically.
         """
         user = _resolve_user(token, store)
-        link = build_vless_link(user, settings)
-        encoded = base64.b64encode(link.encode("utf-8")).decode("ascii")
-        return Response(content=encoded, media_type="text/plain")
-
+        config = build_client_config(user, settings)
+        body = json.dumps(config, indent=2, ensure_ascii=False)
+        return Response(content=body, media_type="application/json")
     return app
 
 

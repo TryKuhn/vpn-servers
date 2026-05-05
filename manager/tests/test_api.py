@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import base64
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -29,33 +27,57 @@ def test_health_endpoint(client: TestClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_subscription_returns_base64_vless_link(
-    client: TestClient, alice: User
-) -> None:
-    response = client.get(f"/sub/{alice.subscription_token}")
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("text/plain")
-
-    decoded = base64.b64decode(response.text).decode("utf-8")
-    assert decoded.startswith("vless://")
-    assert alice.uuid in decoded
-
-
 def test_subscription_unknown_token_returns_404(client: TestClient) -> None:
     response = client.get("/sub/this_token_does_not_exist")
     assert response.status_code == 404
 
 
-def test_subscription_returns_correct_user_link(
-    client: TestClient, alice: User, bob: User
+def test_subscription_returns_json_xray_config(
+        client: TestClient, alice: User
 ) -> None:
-    """Each token resolves to its respective user."""
-    alice_response = client.get(f"/sub/{alice.subscription_token}")
-    bob_response = client.get(f"/sub/{bob.subscription_token}")
+    response = client.get(f"/sub/{alice.subscription_token}")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
 
-    alice_link = base64.b64decode(alice_response.text).decode("utf-8")
-    bob_link = base64.b64decode(bob_response.text).decode("utf-8")
+    config = response.json()
 
-    assert alice.uuid in alice_link
-    assert bob.uuid in bob_link
-    assert alice.uuid not in bob_link
+    # Top-level shape
+    assert "outbounds" in config
+    assert "routing" in config
+
+    # Has VPN outbound + direct + block
+    outbound_tags = {o["tag"] for o in config["outbounds"]}
+    assert outbound_tags == {"proxy", "direct", "block"}
+
+    # Proxy outbound has the user's UUID
+    proxy = next(o for o in config["outbounds"] if o["tag"] == "proxy")
+    proxy_uuid = proxy["settings"]["vnext"][0]["users"][0]["id"]
+    assert proxy_uuid == alice.uuid
+
+
+def test_subscription_routing_rules_present(
+        client: TestClient, alice: User
+) -> None:
+    response = client.get(f"/sub/{alice.subscription_token}")
+    config = response.json()
+    rules = config["routing"]["rules"]
+
+    # Should have at least: ads-block, gov-ru-direct, ru-ip-direct, default-proxy
+    rule_tags = [r["outboundTag"] for r in rules]
+    assert "block" in rule_tags
+    assert "direct" in rule_tags
+    assert "proxy" in rule_tags
+
+
+def test_subscription_returns_correct_user(
+        client: TestClient, alice: User, bob: User
+) -> None:
+    """Each token resolves to its respective user's UUID."""
+    alice_resp = client.get(f"/sub/{alice.subscription_token}")
+    bob_resp = client.get(f"/sub/{bob.subscription_token}")
+
+    alice_uuid = alice_resp.json()["outbounds"][0]["settings"]["vnext"][0]["users"][0]["id"]
+    bob_uuid = bob_resp.json()["outbounds"][0]["settings"]["vnext"][0]["users"][0]["id"]
+
+    assert alice_uuid == alice.uuid
+    assert bob_uuid == bob.uuid
