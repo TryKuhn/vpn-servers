@@ -55,6 +55,77 @@ def test_subscription_returns_json_xray_config(
     assert proxy_uuid == alice.uuid
 
 
+# ----------------------------------------------------------------------------
+# Format negotiation: ?format=sing-box
+# ----------------------------------------------------------------------------
+
+
+def test_subscription_default_format_is_xray(
+        client: TestClient, alice: User
+) -> None:
+    """No query param = legacy xray-config (backwards compat)."""
+    response = client.get(f"/sub/{alice.subscription_token}")
+    assert response.status_code == 200
+
+    config = response.json()
+    # xray uses `routing`, sing-box uses `route` — quick discriminator
+    assert "routing" in config
+    assert "route" not in config
+
+
+def test_subscription_explicit_format_xray(
+        client: TestClient, alice: User
+) -> None:
+    response = client.get(f"/sub/{alice.subscription_token}?format=xray")
+    assert response.status_code == 200
+
+    config = response.json()
+    assert "routing" in config
+
+
+def test_subscription_format_sing_box(
+        client: TestClient, alice: User
+) -> None:
+    response = client.get(f"/sub/{alice.subscription_token}?format=sing-box")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+
+    config = response.json()
+    # sing-box has these top-level keys
+    assert "route" in config
+    assert "outbounds" in config
+    assert "experimental" in config
+    # And NOT the xray ones
+    assert "routing" not in config
+
+
+def test_subscription_sing_box_contains_user_uuid(
+        client: TestClient, alice: User
+) -> None:
+    response = client.get(f"/sub/{alice.subscription_token}?format=sing-box")
+    config = response.json()
+
+    proxy = next(o for o in config["outbounds"] if o["tag"] == "proxy")
+    # In sing-box, uuid lives directly on the outbound (not in vnext.users)
+    assert proxy["uuid"] == alice.uuid
+
+
+def test_subscription_invalid_format_returns_422(
+        client: TestClient, alice: User
+) -> None:
+    """FastAPI Enum validation rejects unknown formats."""
+    response = client.get(f"/sub/{alice.subscription_token}?format=clash")
+    assert response.status_code == 422
+
+
+def test_subscription_format_is_case_sensitive(
+        client: TestClient, alice: User
+) -> None:
+    """Enum values are exact-match — protects us from future renames."""
+    response = client.get(f"/sub/{alice.subscription_token}?format=Sing-Box")
+    assert response.status_code == 422
+
+
 def test_subscription_routing_rules_present(
         client: TestClient, alice: User
 ) -> None:

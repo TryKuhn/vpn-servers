@@ -59,6 +59,9 @@ include = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = [
+    "src/vpn_manager/xray/_generated",
+]
 
 [tool.ruff.lint]
 select = [

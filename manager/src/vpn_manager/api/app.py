@@ -9,15 +9,28 @@ from __future__ import annotations
 
 import json
 import logging
+from enum import StrEnum
 
 from fastapi import FastAPI, HTTPException, Response
 
 from vpn_manager.config import Settings
 from vpn_manager.models.user import User
 from vpn_manager.storage.users_store import UsersStore
-from vpn_manager.utils.client_config import build_client_config
+from vpn_manager.utils.client_config import build_client_config as build_xray_config
+from vpn_manager.utils.singbox_config import build_client_config as build_singbox_config
 
 log = logging.getLogger(__name__)
+
+
+class SubscriptionFormat(StrEnum):
+    """Format of the client config served by the subscription endpoint.
+
+    Values are exposed as query-param strings, so they're stable
+    public API and shouldn't be renamed lightly.
+    """
+
+    XRAY = "xray"
+    SING_BOX = "sing-box"
 
 
 def create_app(settings: Settings, store: UsersStore) -> FastAPI:
@@ -41,17 +54,30 @@ def create_app(settings: Settings, store: UsersStore) -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/sub/{token}")
-    def subscription(token: str) -> Response:
-        """Return the user's full xray client config as JSON.
+    def subscription(
+            token: str,
+            format: SubscriptionFormat = SubscriptionFormat.XRAY,
+    ) -> Response:
+        """Serve the user's client config in the requested format.
 
-        The client (V2RayTun, Hiddify, v2rayN) imports this URL and uses the
-        JSON as its complete xray configuration — including routing rules
-        that handle split tunneling automatically.
+        Default (no `?format=`) is xray-config — what existing v0.75
+        clients have already imported. Adding `?format=sing-box`
+        returns a sing-box-formatted config that delivers smart routing
+        to V2RayTun, Hiddify, NekoBox, and other sing-box-based clients.
+
+        Returns 404 if the token doesn't match any user.
+        Returns 422 (FastAPI default) if `format` is not a known value.
         """
         user = _resolve_user(token, store)
-        config = build_client_config(user, settings)
+
+        if format is SubscriptionFormat.SING_BOX:
+            config = build_singbox_config(user, settings)
+        else:
+            config = build_xray_config(user, settings)
+
         body = json.dumps(config, indent=2, ensure_ascii=False)
         return Response(content=body, media_type="application/json")
+
     return app
 
 
