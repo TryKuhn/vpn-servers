@@ -119,9 +119,7 @@ services:
     container_name: vpn-nginx
     restart: unless-stopped
 
-    ports:
-      - "80:80"
-      - "8443:8443"
+    network_mode: host
 
     # certbot needs persistent storage for certificates between restarts,
     # otherwise we'd request a new cert every time and hit Let's Encrypt
@@ -142,11 +140,6 @@ services:
       # Renewal interval in seconds. Default 8h. We bump to 12h to be
       # gentler on Let's Encrypt's servers.
       RENEWAL_INTERVAL: 43200
-
-    extra_hosts:
-      # Required so nginx inside the container can reach manager on
-      # the host (because manager uses network_mode: host).
-      - "host.docker.internal:host-gateway"
 
     depends_on:
       manager:
