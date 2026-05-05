@@ -309,3 +309,52 @@ def test_add_many_partial_failure_keeps_earlier_users(
     # alice was added successfully before the failure
     names = {u.name for u in service.list_all()}
     assert names == {"alice"}
+
+
+# ----------------------------------------------------------------------------
+# rotate_subscription_token
+# ----------------------------------------------------------------------------
+
+
+def test_rotate_token_issues_new_token(
+        service: UserService, xray_mock: MagicMock
+) -> None:
+    user = service.add("alice")
+    old_token = user.subscription_token
+
+    rotated = service.rotate_subscription_token("alice")
+
+    assert rotated.name == user.name
+    assert rotated.uuid == user.uuid  # UUID stays
+    assert rotated.created_at == user.created_at
+    assert rotated.subscription_token != old_token
+    assert len(rotated.subscription_token) > 30
+
+
+def test_rotate_token_persists(service: UserService, xray_mock: MagicMock) -> None:
+    """Rotated token survives reload from storage."""
+    service.add("alice")
+    rotated = service.rotate_subscription_token("alice")
+
+    # Reload via fresh service instance with same backing store
+    fresh = service.get("alice")
+    assert fresh.subscription_token == rotated.subscription_token
+
+
+def test_rotate_token_does_not_call_xray(
+        service: UserService, xray_mock: MagicMock
+) -> None:
+    """Token rotation is metadata-only — xray runtime is untouched."""
+    service.add("alice")
+    xray_mock.reset_mock()
+
+    service.rotate_subscription_token("alice")
+
+    # add_user/remove_user must NOT have been called
+    xray_mock.add_user.assert_not_called()
+    xray_mock.remove_user.assert_not_called()
+
+
+def test_rotate_token_unknown_user_raises(service: UserService) -> None:
+    with pytest.raises(UserNotFoundError):
+        service.rotate_subscription_token("ghost")

@@ -222,3 +222,45 @@ class UserService:
             # compensate-on-error
             created.append(user)
         return created
+
+    def rotate_subscription_token(self, name: str) -> User:
+        """Generate a new subscription token for an existing user.
+
+        The user's UUID and xray runtime entry are NOT changed — only
+        the subscription URL becomes invalid. After rotation:
+          - The old `/sub/<old_token>` URL returns 404.
+          - The user's existing client connection (already imported)
+            keeps working until the client tries to re-fetch.
+          - The new `/sub/<new_token>` URL must be re-shared with the user.
+
+        Use case: subscription token leaked, user lost device, etc.
+
+        Raises:
+            UserNotFoundError: if no user with this name exists.
+        """
+        user = self.store.get(name)
+
+        # Build a new user with a freshly-generated token. dataclass.replace
+        # would be cleaner, but User is frozen and we want explicit control.
+        from vpn_manager.models.user import _generate_subscription_token
+
+        rotated = User(
+            name=user.name,
+            uuid=user.uuid,
+            email=user.email,
+            subscription_token=_generate_subscription_token(),
+            created_at=user.created_at,
+        )
+
+        # Persist by remove + add (UsersStore doesn't have an update method).
+        self.store.remove(name)
+        try:
+            self.store.add(rotated)
+        except Exception:
+            # Restore the old user if save fails. add() shouldn't really
+            # fail here (we just removed the same name), but defense in
+            # depth.
+            self.store.add(user)
+            raise
+
+        return rotated

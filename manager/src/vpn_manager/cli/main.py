@@ -15,7 +15,7 @@ import logging
 import sys
 from collections.abc import Callable
 
-from vpn_manager.cli.commands import add, list_users, remove, show, sync
+from vpn_manager.cli.commands import add, list_users, remove, rotate_token, show, sync
 from vpn_manager.config import Settings
 from vpn_manager.services.user_service import UserService
 from vpn_manager.storage.users_store import (
@@ -45,7 +45,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # Each command module registers itself.
-    for module in (add, remove, list_users, show, sync):
+    for module in (add, remove, list_users, show, sync, rotate_token):
         module.register(subparsers)
 
     return parser
