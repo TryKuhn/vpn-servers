@@ -9,11 +9,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- **v0.75.0** — Subscription URL server: clients import a single URL and receive
-  a fully-configured client config.
-- **v0.8.0** — Smart routing in subscription configs: route only foreign sites
-  through the VPN, keep local traffic direct.
+- **v0.85** — sing-box subscription format for clients that fully apply
+  routing config (V2RayTun, Hiddify, NekoBox). Will enable automatic
+  client-side split tunneling.
 - **v1.0.0** — Subscription billing with Telegram bot, recurring payments.
+
+## [0.75.0] — 2026-05-05
+
+Subscription server. Clients can now import a single URL that auto-updates
+when server config changes.
+
+### Added
+
+- **HTTP API in manager** (FastAPI + uvicorn) on `:8080`, host network.
+  - `GET /health` — liveness probe.
+  - `GET /sub/{token}` — returns the user's xray client config as JSON.
+- **HTTPS termination via nginx** on `:8443` with auto-renewing
+  Let's Encrypt certificates (jonasal/nginx-certbot).
+- **Subscription tokens**: every user gets a 256-bit URL-safe token at
+  creation, used as the secret in their personal subscription URL.
+  Backwards-compat: legacy users (created before v0.75) get tokens
+  generated on first read.
+- **`vpn-user rotate-token NAME` CLI** — issue a fresh subscription URL
+  for an existing user. UUID and active VPN session are unaffected;
+  only the subscription URL changes.
+- **Updated CLI output**: `vpn-user add` and `vpn-user show` now print
+  the subscription URL (recommended) alongside the legacy VLESS link.
+  QR codes encode the subscription URL.
+- **DuckDNS support**: Reality keys, server cert, and subscription URL
+  use a DuckDNS subdomain (no domain registration needed).
+- **`config-init` for nginx**: docker-compose runs nginx + certbot in
+  `network_mode: host` so it can reach manager directly via 127.0.0.1.
+
+### Operational notes
+
+- The xray-config JSON returned by `/sub/{token}` includes `outbounds`
+  for VPN/direct/block plus routing rules for smart split tunneling
+  (RU sites direct, ads blocked, rest through VPN).
+- **However**: most popular clients today (V2RayTun, Hiddify) extract
+  only the VLESS connection details from this JSON and ignore the
+  routing rules — they apply their own routing instead. This means
+  the "smart routing in subscription" goal is **not yet** delivered to
+  end users. Server-side anti-leak (v0.7.1) still protects from RU
+  domain leakage even when client-side routing isn't applied.
+- Full client-side smart routing requires a sing-box-formatted
+  subscription, planned for v0.85.
+
+### Configuration
+
+New environment variables required (see `.env.example`):
+
+- `NGINX_DOMAIN` — DuckDNS subdomain pointing to your VPS.
+- `CERTBOT_EMAIL` — email for Let's Encrypt renewal warnings.
+- `ACME_STAGING` — `1` for staging certs, `0` for production.
+- `SUBSCRIPTION_BASE_URL` — base URL for subscription endpoints
+  (e.g., `https://your-domain.duckdns.org:8443`).
+
+### Infrastructure
+
+Production docker-compose now runs four services:
+
+- `xray` — VPN itself (port 443).
+- `manager` — FastAPI subscription server + CLI (port 8080).
+- `nginx` — TLS termination + Let's Encrypt (ports 80, 8443).
+- `config-init`, `data-init` — one-shot init for permissions and config.
 
 ## [0.7.1] — 2026-05-05
 
