@@ -7,6 +7,7 @@ periodically for config updates.
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 from enum import StrEnum
@@ -18,6 +19,7 @@ from vpn_manager.models.user import User
 from vpn_manager.storage.users_store import UsersStore
 from vpn_manager.utils.client_config import build_client_config as build_xray_config
 from vpn_manager.utils.singbox_config import build_client_config as build_singbox_config
+from vpn_manager.utils.vless_link import build_vless_link
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +31,17 @@ class SubscriptionFormat(StrEnum):
     public API and shouldn't be renamed lightly.
     """
 
+    # Classic v2rayN format: a base64-encoded list of share links,
+    # separated by newlines. Understood by every popular client (V2RayTun,
+    # v2rayN, v2rayNG, NekoBox, etc.). This is the default.
+    LINK = "link"
+
+    # Full xray client config as JSON. Mostly unused — most "xray clients"
+    # actually only parse the connection details and ignore routing.
     XRAY = "xray"
+
+    # Full sing-box config with smart routing. Hiddify and other native
+    # sing-box clients fully apply our routing rules.
     SING_BOX = "sing-box"
 
 
@@ -56,14 +68,13 @@ def create_app(settings: Settings, store: UsersStore) -> FastAPI:
     @app.get("/sub/{token}")
     def subscription(
             token: str,
-            format: SubscriptionFormat = SubscriptionFormat.XRAY,
+            format: SubscriptionFormat = SubscriptionFormat.LINK,
     ) -> Response:
-        """Serve the user's client config in the requested format.
+        """Serve the user's subscription in the requested format.
 
-        Default (no `?format=`) is xray-config — what existing v0.75
-        clients have already imported. Adding `?format=sing-box`
-        returns a sing-box-formatted config that delivers smart routing
-        to V2RayTun, Hiddify, NekoBox, and other sing-box-based clients.
+        Default (no `?format=`) is the classic base64 VLESS-link format
+        that's universally supported. xray and sing-box JSON formats are
+        opt-in for clients that benefit from them.
 
         Returns 404 if the token doesn't match any user.
         Returns 422 (FastAPI default) if `format` is not a known value.
@@ -72,11 +83,18 @@ def create_app(settings: Settings, store: UsersStore) -> FastAPI:
 
         if format is SubscriptionFormat.SING_BOX:
             config = build_singbox_config(user, settings)
-        else:
-            config = build_xray_config(user, settings)
+            body = json.dumps(config, indent=2, ensure_ascii=False)
+            return Response(content=body, media_type="application/json")
 
-        body = json.dumps(config, indent=2, ensure_ascii=False)
-        return Response(content=body, media_type="application/json")
+        if format is SubscriptionFormat.XRAY:
+            config = build_xray_config(user, settings)
+            body = json.dumps(config, indent=2, ensure_ascii=False)
+            return Response(content=body, media_type="application/json")
+
+        # Default: base64-encoded VLESS share link.
+        link = build_vless_link(user, settings)
+        encoded = base64.b64encode(link.encode("utf-8")).decode("ascii")
+        return Response(content=encoded, media_type="text/plain")
 
     return app
 

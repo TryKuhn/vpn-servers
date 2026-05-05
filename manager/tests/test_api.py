@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -32,45 +34,32 @@ def test_subscription_unknown_token_returns_404(client: TestClient) -> None:
     assert response.status_code == 404
 
 
-def test_subscription_returns_json_xray_config(
+def test_subscription_default_format_is_base64_vless(
         client: TestClient, alice: User
 ) -> None:
+    """No query param = base64-encoded VLESS link (universal format)."""
     response = client.get(f"/sub/{alice.subscription_token}")
     assert response.status_code == 200
-    assert response.headers["content-type"].startswith("application/json")
+    assert response.headers["content-type"].startswith("text/plain")
 
-    config = response.json()
+    # Decodes back to a vless:// link with the user's UUID
+    decoded = base64.b64decode(response.text).decode("utf-8")
+    assert decoded.startswith("vless://")
+    assert alice.uuid in decoded
 
-    # Top-level shape
-    assert "outbounds" in config
-    assert "routing" in config
 
-    # Has VPN outbound + direct + block
-    outbound_tags = {o["tag"] for o in config["outbounds"]}
-    assert outbound_tags == {"proxy", "direct", "block"}
-
-    # Proxy outbound has the user's UUID
-    proxy = next(o for o in config["outbounds"] if o["tag"] == "proxy")
-    proxy_uuid = proxy["settings"]["vnext"][0]["users"][0]["id"]
-    assert proxy_uuid == alice.uuid
+def test_subscription_explicit_format_link(
+        client: TestClient, alice: User
+) -> None:
+    response = client.get(f"/sub/{alice.subscription_token}?format=link")
+    assert response.status_code == 200
+    decoded = base64.b64decode(response.text).decode("utf-8")
+    assert decoded.startswith("vless://")
 
 
 # ----------------------------------------------------------------------------
 # Format negotiation: ?format=sing-box
 # ----------------------------------------------------------------------------
-
-
-def test_subscription_default_format_is_xray(
-        client: TestClient, alice: User
-) -> None:
-    """No query param = legacy xray-config (backwards compat)."""
-    response = client.get(f"/sub/{alice.subscription_token}")
-    assert response.status_code == 200
-
-    config = response.json()
-    # xray uses `routing`, sing-box uses `route` — quick discriminator
-    assert "routing" in config
-    assert "route" not in config
 
 
 def test_subscription_explicit_format_xray(
@@ -126,29 +115,16 @@ def test_subscription_format_is_case_sensitive(
     assert response.status_code == 422
 
 
-def test_subscription_routing_rules_present(
-        client: TestClient, alice: User
-) -> None:
-    response = client.get(f"/sub/{alice.subscription_token}")
-    config = response.json()
-    rules = config["routing"]["rules"]
-
-    # Should have at least: ads-block, gov-ru-direct, ru-ip-direct, default-proxy
-    rule_tags = [r["outboundTag"] for r in rules]
-    assert "block" in rule_tags
-    assert "direct" in rule_tags
-    assert "proxy" in rule_tags
-
-
 def test_subscription_returns_correct_user(
         client: TestClient, alice: User, bob: User
 ) -> None:
-    """Each token resolves to its respective user's UUID."""
+    """Each token resolves to its respective user's link."""
     alice_resp = client.get(f"/sub/{alice.subscription_token}")
     bob_resp = client.get(f"/sub/{bob.subscription_token}")
 
-    alice_uuid = alice_resp.json()["outbounds"][0]["settings"]["vnext"][0]["users"][0]["id"]
-    bob_uuid = bob_resp.json()["outbounds"][0]["settings"]["vnext"][0]["users"][0]["id"]
+    alice_link = base64.b64decode(alice_resp.text).decode("utf-8")
+    bob_link = base64.b64decode(bob_resp.text).decode("utf-8")
 
-    assert alice_uuid == alice.uuid
-    assert bob_uuid == bob.uuid
+    assert alice.uuid in alice_link
+    assert bob.uuid in bob_link
+    assert alice.uuid not in bob_link
