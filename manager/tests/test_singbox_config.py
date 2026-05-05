@@ -169,3 +169,37 @@ def test_cache_file_enabled(alice: User, settings: Settings) -> None:
     """sing-box requires this for remote rule-sets to actually persist."""
     config = build_client_config(alice, settings)
     assert config["experimental"]["cache_file"]["enabled"] is True
+
+
+def test_telegram_routed_through_proxy(alice: User, settings: Settings) -> None:
+    """Telegram IPs are RU-registered but blocked in Russia.
+
+    Must go through VPN, not direct, despite matching geoip-ru.
+    """
+    config = build_client_config(alice, settings)
+    rules = config["route"]["rules"]
+
+    tg_rule = next(
+        r for r in rules
+        if "geoip-telegram" in r.get("rule_set", [])
+    )
+    assert tg_rule["outbound"] == "proxy"
+
+
+def test_telegram_rule_comes_before_geoip_ru(
+        alice: User, settings: Settings
+) -> None:
+    """Order matters: Telegram → proxy must be checked BEFORE geoip-ru → direct,
+    otherwise Telegram IPs (registered RU) get sent direct and fail."""
+    config = build_client_config(alice, settings)
+    rules = config["route"]["rules"]
+
+    tg_idx = next(
+        i for i, r in enumerate(rules)
+        if "geoip-telegram" in r.get("rule_set", [])
+    )
+    geoip_ru_idx = next(
+        i for i, r in enumerate(rules)
+        if "geoip-ru" in r.get("rule_set", [])
+    )
+    assert tg_idx < geoip_ru_idx

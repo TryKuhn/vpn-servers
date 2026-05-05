@@ -114,9 +114,23 @@ def _route_section() -> dict[str, Any]:
                 ],
                 "outbound": "proxy",
             },
-            # 3. RU services that work better/only with a Russian IP.
+            # 3. Telegram is special: its IPs (149.154.x, 91.108.x) are
+            #    *registered* as Russian networks, so geoip-ru would
+            #    catch them. But Telegram is blocked inside Russia, so
+            #    sending it direct breaks the desktop client. Web-version
+            #    works because it goes through the proxy domain rule
+            #    (web.telegram.org doesn't match any direct rule).
+            #    This rule must come before geoip-ru below.
+            {
+                "rule_set": [
+                    "geosite-telegram",
+                    "geoip-telegram",
+                ],
+                "outbound": "proxy",
+            },
+            # 4. RU services that work better/only with a Russian IP.
             #    Banks, gov, medicine, ecommerce, plus the catch-all
-            #    `geoip-ru` and private addresses.
+            #    `geoip-ru`.
             {
                 "rule_set": [
                     "geosite-category-bank-ru",
@@ -131,7 +145,6 @@ def _route_section() -> dict[str, Any]:
                 "ip_is_private": True,
                 "outbound": "direct",
             },
-            # Anything else falls through to `final: proxy`.
         ],
         "rule_set": [
             _remote_ruleset("geosite", "category-ads-all"),
@@ -142,6 +155,8 @@ def _route_section() -> dict[str, Any]:
             _remote_ruleset("geosite", "category-medicine-ru"),
             _remote_ruleset("geosite", "category-ecommerce-ru"),
             _remote_ruleset("geoip", "ru"),
+            _remote_ruleset("geosite", "telegram"),
+            _remote_ruleset("geoip", "telegram"),
         ],
     }
 
