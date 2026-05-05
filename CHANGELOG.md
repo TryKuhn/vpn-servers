@@ -15,6 +15,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through the VPN, keep local traffic direct.
 - **v1.0.0** — Subscription billing with Telegram bot, recurring payments.
 
+## [0.7.1] — 2026-05-05
+
+Restore anti-leak and ad-blocking after upstream xray image incompatibility,
+and harden the deployment pipeline with safety nets that would have prevented
+the morning outage.
+
+### Fixed
+
+- **Restored anti-leak and ad-blocking routing**, broken since the morning's
+  outage when teddysun's xray image bumped its bundled geosite database and
+  silently dropped the `geosite:ru` category. Replaced with `geoip:ru`
+  (catches more — works at the IP layer regardless of DNS), kept
+  `geosite:category-gov-ru` and `geosite:category-ads-all`.
+- **Pinned `teddysun/xray` to 25.12.8** in docker-compose. The `:latest`
+  tag was the root cause of the morning's outage: an upstream image
+  refresh broke our routing rules without warning. Image upgrades are
+  now explicit, deliberate decisions.
+
+### Added
+
+- **Pre-deploy xray config validation** in GitHub Actions. The deploy
+  workflow now renders the xray config from template + `.env` and runs
+  `xray run -test` against it BEFORE touching production containers. If
+  validation fails, the deploy aborts with the running stack untouched.
+  This is the safety net that would have prevented the morning's outage.
+- **Smarter CI healthcheck**:
+  - Manager's `/health` HTTP endpoint is probed (proves uvicorn is
+    serving, not just that the process started).
+  - Manager's `RestartCount` is tracked: if the container restarts
+    more than twice during the deploy window, deployment is failed
+    fast.
+  - Failure log shows final state (`xray=...`, `manager=...`,
+    `/health=...`, restarts) for faster diagnosis.
+
+### Operational notes
+
+- The `geosite:ru` category was removed from teddysun's bundled
+  geosite.dat at some point in early May 2026. We don't depend on it
+  anymore. If a future image upgrade restores it, we may revisit the
+  trade-off between domain-based and IP-based blocking.
+- For users without client-side split tunneling, RU sites continue
+  to be blocked through the VPN. The recommended client config in
+  `docs/DEPLOYMENT.md` still applies.
+
 ## [0.7.0] — 2026-05-04
 
 Server-side ad blocking via geosite categories.

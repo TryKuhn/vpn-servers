@@ -53,7 +53,7 @@ services:
   # xray — the VPN server itself
   # ---------------------------------------------------------------------------
   xray:
-    image: teddysun/xray:latest
+    image: teddysun/xray:25.12.8
     container_name: vpn-xray
     restart: unless-stopped
     network_mode: host
