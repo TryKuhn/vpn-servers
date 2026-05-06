@@ -89,7 +89,7 @@ def test_telegram_routed_through_proxy(
     """Telegram IPs are RU-registered but blocked in Russia."""
     config = build_client_config(alice, settings)
     rules = config["rules"]
-    assert "GEOIP,telegram,PROXY,no-resolve" in rules
+    assert "GEOIP,telegram,PROXY" in rules
 
 
 def test_telegram_rule_comes_before_geoip_ru(
@@ -118,7 +118,22 @@ def test_private_addresses_direct(alice: User, settings: Settings) -> None:
 def test_ru_ips_direct(alice: User, settings: Settings) -> None:
     config = build_client_config(alice, settings)
     rules = config["rules"]
-    assert "GEOIP,RU,DIRECT,no-resolve" in rules
+    assert "GEOIP,RU,DIRECT" in rules
+
+
+def test_no_resolve_only_on_private_rule(
+    alice: User, settings: Settings
+) -> None:
+    """Mihomo skips DNS resolution with `no-resolve`. Domain-based
+    connections wouldn't match GEOIP rules without resolution, so we
+    only use `no-resolve` for the private rule (raw IPs, not domains).
+    """
+    config = build_client_config(alice, settings)
+    rules = config["rules"]
+
+    rules_with_no_resolve = [r for r in rules if "no-resolve" in r]
+    assert len(rules_with_no_resolve) == 1
+    assert "private" in rules_with_no_resolve[0]
 
 
 def test_ads_rule_provider_is_remote_mrs(

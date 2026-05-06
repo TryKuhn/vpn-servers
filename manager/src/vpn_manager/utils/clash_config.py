@@ -171,13 +171,13 @@ def _rules() -> list[str]:
         "RULE-SET,ads,REJECT",
         # 2. Telegram → PROXY. DCs are RU-registered but blocked inside
         #    Russia, so direct routing breaks the desktop client.
-        "GEOIP,telegram,PROXY,no-resolve",
+        "GEOIP,telegram,PROXY",
         # 3. Private addresses → DIRECT (RFC1918 etc.)
         "GEOIP,private,DIRECT,no-resolve",
         # 4. Russian IPs → DIRECT. Catches gosuslugi/sber/banks/medicine/
         #    ecommerce by IP. Less precise than domain-based rules but
         #    covers ~90% of cases.
-        "GEOIP,RU,DIRECT,no-resolve",
+        "GEOIP,RU,DIRECT",
         # 5. Everything else → through VPN.
         "MATCH,PROXY",
     ]
