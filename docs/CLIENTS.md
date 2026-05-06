@@ -129,3 +129,18 @@ with `mixed-port: 7890`.
 See the [Android known quirk](#known-android-quirk-госуслуги--мой-налог-vpn-warnings)
 section above. This is an OS-level VPN-detection issue, not specific to
 our config.
+
+### `git push` to GitHub fails or hangs
+
+If you're running TryKuhnVpn on the same machine where you develop, our
+config explicitly whitelists `*.github.com` to DIRECT (GitHub itself
+isn't proxied or blocked by us). However, if `git push` still fails
+through TUN mode, try:
+
+1. Verify the rule is active in your client's Connections tab when
+   pushing — you should see `github.com:443` matched by `DOMAIN-SUFFIX`
+   and routed DIRECT, not PROXY.
+2. As a fallback, disable TUN mode briefly during the push.
+
+GitLab, Bitbucket, npm, PyPI, etc. are not whitelisted in v0.85 — if
+you need them DIRECT, request via issue.

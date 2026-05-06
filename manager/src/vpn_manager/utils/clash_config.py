@@ -165,18 +165,32 @@ def _rules() -> list[str]:
 
     GEOIP rules use Mihomo's built-in geoip.dat rather than rule-providers
     — they're available everywhere and don't need separate downloads.
+
+    `no-resolve` is used ONLY on the `private` rule. For `telegram` and
+    `RU`, traffic typically arrives as a domain (not a raw IP), so
+    skipping DNS resolution would make those rules never match for
+    domain connections. The `private` case is different: RFC1918 traffic
+    is always raw IP, so DNS resolution is unnecessary.
     """
     return [
-        # 1. Ads & trackers → REJECT (highest priority).
+        # 0. GitHub → DIRECT (whitelist before ads-rejection).
+        #    MetaCubeX category-ads-all blocks `collector.github.com`,
+        #    which breaks `git push` for users running our VPN client
+        #    on the same machine they develop on. Whitelisting all of
+        #    github.com is a reasonable trade-off: it's developer
+        #    infrastructure, not a typical "ads/tracking" target.
+        "DOMAIN-SUFFIX,github.com,DIRECT",
+        # 1. Ads & trackers → REJECT.
         "RULE-SET,ads,REJECT",
         # 2. Telegram → PROXY. DCs are RU-registered but blocked inside
         #    Russia, so direct routing breaks the desktop client.
         "GEOIP,telegram,PROXY",
-        # 3. Private addresses → DIRECT (RFC1918 etc.)
+        # 3. Private addresses → DIRECT (RFC1918 etc.). no-resolve is
+        #    safe here: private addresses arrive as raw IPs, not domains.
         "GEOIP,private,DIRECT,no-resolve",
         # 4. Russian IPs → DIRECT. Catches gosuslugi/sber/banks/medicine/
-        #    ecommerce by IP. Less precise than domain-based rules but
-        #    covers ~90% of cases.
+        #    ecommerce by IP. Mihomo will resolve the domain to check the
+        #    target IP against geoip:RU.
         "GEOIP,RU,DIRECT",
         # 5. Everything else → through VPN.
         "MATCH,PROXY",
