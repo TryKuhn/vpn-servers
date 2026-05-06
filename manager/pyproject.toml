@@ -40,6 +40,7 @@ dev = [
     "types-qrcode",             # type stubs
     "grpcio-tools>=1.60",          # protoc + grpc plugin (for local development)
     "types-protobuf",              # type stubs for protobuf
+    "types-PyYAML>=6.0",
 ]
 
 [project.scripts]
