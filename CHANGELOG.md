@@ -9,10 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- **v0.85** — sing-box subscription format for clients that fully apply
-  routing config (V2RayTun, Hiddify, NekoBox). Will enable automatic
-  client-side split tunneling.
 - **v1.0.0** — Subscription billing with Telegram bot, recurring payments.
+
+## [0.85.0] - 2026-05-06
+
+### Added
+- Subscription endpoint now supports four formats via `?format=` query
+  parameter: `link` (default, base64 VLESS), `xray` (xray-core JSON),
+  `sing-box` (sing-box JSON), and `clash` (Mihomo YAML).
+- `?format=clash` enables full client-side smart routing for users on
+  Mihomo-family clients (Clash Verge Rev on Windows/macOS/Linux,
+  Clash Meta For Android, Stash on iOS). RU domains/IPs route DIRECT,
+  international traffic routes through PROXY, ads are rejected.
+- Telegram routing fix in sing-box config: Telegram DC IPs (149.154.x.x)
+  are routed through PROXY despite being RU-registered, so the desktop
+  client doesn't get stuck on "Connecting..." inside Russia.
+
+### Changed
+- Default subscription format is now `link` (base64 VLESS) instead of
+  raw JSON. Universally parsed by V2RayTun, v2rayN, v2rayNG, Hiddify,
+  and other Xray-family clients.
+
+### Fixed
+- N/A (no production bugs fixed in this release; v0.85 is feature-only).
+
+### Notes
+- `?format=sing-box` is supported but only fully applied by sing-box CLI
+  and a small subset of GUI clients (NekoBox). Most popular GUI clients
+  (V2RayTun, Hiddify Next) silently strip routing rules from sing-box
+  subscriptions — this is an architectural choice on their side, not a
+  bug in our config. For smart routing on Windows/macOS/Linux/Android,
+  `?format=clash` with a Mihomo-family client is the recommended path.
+- iOS users have no fully-free Mihomo client. Stash ($3.99) on App Store
+  works with `?format=clash`. Hiddify Next on iOS works for connectivity
+  but without smart routing (same architectural limitation as desktop).
 
 ## [0.75.0] — 2026-05-05
 

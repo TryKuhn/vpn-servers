@@ -13,14 +13,13 @@ zero-downtime user operations.
 - **Dockerized** — single `make up` to spin up a node.
 - **Idempotent setup** — `make install` on a fresh VPS handles dependencies,
   firewall, and Docker.
+- **Subscription server** with smart routing — `?format=clash` for
+  Mihomo-family clients (Clash Verge Rev, CMFA, Stash) routes RU traffic
+  DIRECT and international traffic through the VPN automatically. See
+  [docs/CLIENTS.md](./docs/CLIENTS.md) for client setup.
 
 ### Coming soon
 
-- Zero-downtime user management via Xray gRPC API (v0.5.0)
-- Anti-leak routing for RU domains/IPs (v0.6.0)
-- Server-side ad blocking (v0.7.0)
-- Subscription URL server (v0.75.0)
-- Smart routing in client configs (v0.8.0)
 - Telegram-bot billing with recurring payments (v1.0.0)
 
 See [CHANGELOG.md](./CHANGELOG.md) for the full roadmap.
@@ -48,6 +47,19 @@ make status    # check it's running
 make logs      # see xray output
 ```
 
+## Connecting clients
+
+User-side setup is documented separately — see
+[docs/CLIENTS.md](./docs/CLIENTS.md). Quick recap:
+
+- **Default subscription URL** — base64 VLESS link, works in any
+  Xray-family client (V2RayTun, v2rayN, Hiddify, etc.) as a full-tunnel
+  VPN.
+- **`?format=clash`** — Mihomo YAML with smart routing. Use with Clash
+  Verge Rev (Windows/macOS/Linux), CMFA (Android), or Stash (iOS) for
+  automatic split: RU sites direct, international through VPN, ads
+  blocked.
+
 ## Architecture
 
 See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the high-level overview.
@@ -59,5 +71,4 @@ Apache 2.0 — see [LICENSE](./LICENSE).
 ## Disclaimer
 
 This software is provided for educational and personal use. Operators are
-responsible for compliance with local laws regarding VPN operation and use."" 
-"_Auto-deploy verified on $(date +%F)._" 
+responsible for compliance with local laws regarding VPN operation and use. 
