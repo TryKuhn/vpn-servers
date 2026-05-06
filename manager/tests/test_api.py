@@ -58,6 +58,64 @@ def test_subscription_explicit_format_link(
 
 
 # ----------------------------------------------------------------------------
+# Format negotiation: ?format=clash
+# ----------------------------------------------------------------------------
+
+
+def test_subscription_format_clash(
+    client: TestClient, alice: User
+) -> None:
+    response = client.get(f"/sub/{alice.subscription_token}?format=clash")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/yaml")
+
+
+def test_subscription_clash_is_valid_yaml(
+    client: TestClient, alice: User
+) -> None:
+    """Response must round-trip through yaml.safe_load."""
+    import yaml
+
+    response = client.get(f"/sub/{alice.subscription_token}?format=clash")
+    parsed = yaml.safe_load(response.text)
+
+    assert parsed["mode"] == "rule"
+    assert parsed["proxies"][0]["uuid"] == alice.uuid
+
+
+def test_subscription_clash_contains_routing_rules(
+    client: TestClient, alice: User
+) -> None:
+    """Smart routing in subscription — the whole point of this format."""
+    import yaml
+
+    response = client.get(f"/sub/{alice.subscription_token}?format=clash")
+    parsed = yaml.safe_load(response.text)
+
+    rules = parsed["rules"]
+    assert any("ads" in r for r in rules)
+    assert any("telegram" in r.lower() for r in rules)
+    assert "MATCH,PROXY" in rules
+
+
+def test_subscription_clash_uses_user_uuid(
+    client: TestClient, alice: User, bob: User
+) -> None:
+    """Each token resolves to its respective user's UUID in the YAML."""
+    import yaml
+
+    alice_resp = client.get(f"/sub/{alice.subscription_token}?format=clash")
+    bob_resp = client.get(f"/sub/{bob.subscription_token}?format=clash")
+
+    alice_uuid = yaml.safe_load(alice_resp.text)["proxies"][0]["uuid"]
+    bob_uuid = yaml.safe_load(bob_resp.text)["proxies"][0]["uuid"]
+
+    assert alice_uuid == alice.uuid
+    assert bob_uuid == bob.uuid
+    assert alice_uuid != bob_uuid
+
+
+# ----------------------------------------------------------------------------
 # Format negotiation: ?format=sing-box
 # ----------------------------------------------------------------------------
 
@@ -102,8 +160,7 @@ def test_subscription_sing_box_contains_user_uuid(
 def test_subscription_invalid_format_returns_422(
         client: TestClient, alice: User
 ) -> None:
-    """FastAPI Enum validation rejects unknown formats."""
-    response = client.get(f"/sub/{alice.subscription_token}?format=clash")
+    response = client.get(f"/sub/{alice.subscription_token}?format=quantumult")
     assert response.status_code == 422
 
 

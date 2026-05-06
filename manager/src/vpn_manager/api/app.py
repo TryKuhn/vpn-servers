@@ -17,6 +17,7 @@ from fastapi import FastAPI, HTTPException, Response
 from vpn_manager.config import Settings
 from vpn_manager.models.user import User
 from vpn_manager.storage.users_store import UsersStore
+from vpn_manager.utils.clash_config import render_yaml as render_clash_config
 from vpn_manager.utils.client_config import build_client_config as build_xray_config
 from vpn_manager.utils.singbox_config import build_client_config as build_singbox_config
 from vpn_manager.utils.vless_link import build_vless_link
@@ -31,18 +32,10 @@ class SubscriptionFormat(StrEnum):
     public API and shouldn't be renamed lightly.
     """
 
-    # Classic v2rayN format: a base64-encoded list of share links,
-    # separated by newlines. Understood by every popular client (V2RayTun,
-    # v2rayN, v2rayNG, NekoBox, etc.). This is the default.
     LINK = "link"
-
-    # Full xray client config as JSON. Mostly unused — most "xray clients"
-    # actually only parse the connection details and ignore routing.
     XRAY = "xray"
-
-    # Full sing-box config with smart routing. Hiddify and other native
-    # sing-box clients fully apply our routing rules.
     SING_BOX = "sing-box"
+    CLASH = "clash"
 
 
 def create_app(settings: Settings, store: UsersStore) -> FastAPI:
@@ -73,13 +66,20 @@ def create_app(settings: Settings, store: UsersStore) -> FastAPI:
         """Serve the user's subscription in the requested format.
 
         Default (no `?format=`) is the classic base64 VLESS-link format
-        that's universally supported. xray and sing-box JSON formats are
-        opt-in for clients that benefit from them.
+        that's universally supported. xray, sing-box and clash JSON/YAML
+        formats are opt-in for clients that benefit from them.
 
         Returns 404 if the token doesn't match any user.
         Returns 422 (FastAPI default) if `format` is not a known value.
         """
         user = _resolve_user(token, store)
+
+        if format is SubscriptionFormat.CLASH:
+            body = render_clash_config(user, settings)
+            # text/yaml is the de-facto Content-Type for Clash subscriptions.
+            # Mihomo clients accept text/plain too, but text/yaml is more
+            # honest about what we're returning.
+            return Response(content=body, media_type="text/yaml")
 
         if format is SubscriptionFormat.SING_BOX:
             config = build_singbox_config(user, settings)
