@@ -166,3 +166,13 @@ def test_render_yaml_does_not_use_python_anchors(
     rendered = render_yaml(alice, settings)
     assert "&" not in rendered
     assert " *" not in rendered  # leading space avoids matching `*.mrs` etc
+
+
+def test_dns_uses_redir_host_not_fake_ip(
+    alice: User, settings: Settings
+) -> None:
+    """fake-ip breaks GEOIP rules: domains resolve to 198.18.0.x which
+    isn't in any geoip database. Use redir-host so real IPs flow."""
+    config = build_client_config(alice, settings)
+    assert config["dns"]["enhanced-mode"] == "redir-host"
+    assert "fake-ip-range" not in config["dns"]

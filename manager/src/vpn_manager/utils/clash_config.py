@@ -79,17 +79,20 @@ def render_yaml(user: User, settings: Settings) -> str:
 
 
 def _dns_section() -> dict[str, Any]:
-    """Minimal DNS configuration.
+    """DNS configuration.
 
-    Uses fake-ip mode (recommended by Mihomo for performance) with
-    public DoH resolvers. Sufficient for v0.85 — can be extended later
-    with split DNS (RU domains via RU resolver) if needed.
+    We use redir-host mode (not fake-ip) so that GEOIP rules can match
+    the real destination IP of each domain. With fake-ip mode, all
+    domains resolve to 198.18.0.x and GEOIP,RU never matches — sites
+    like ozon.ru that aren't on a RU CDN get sent through PROXY by
+    fallthrough to MATCH.
+
+    redir-host is slower (real DNS round-trip per domain), but correct.
     """
     return {
         "enable": True,
         "ipv6": False,
-        "enhanced-mode": "fake-ip",
-        "fake-ip-range": "198.18.0.1/16",
+        "enhanced-mode": "redir-host",
         "default-nameserver": ["8.8.8.8", "1.1.1.1"],
         "nameserver": [
             "https://1.1.1.1/dns-query",
