@@ -11,6 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **v1.0.0** — Subscription billing with Telegram bot, recurring payments.
 
+## [0.86.0] - 2026-05-XX
+
+### Changed
+- Replaced manual DOMAIN-SUFFIX Ozon whitelist with domain-based MRS
+  rule-set from itdoginfo/allow-domains. The new `ru-direct` rule-set
+  contains 30+ RU-only domains (Ozon, Госуслуги, RZD, Яндекс CDN, etc.)
+  where `geoip:RU` misses due to CDN edge cases or DNS-resolve timing
+  in Mihomo TUN mode. Domain matching happens before DNS resolution,
+  so this fix is structural rather than per-domain.
+
+### Added
+- Rule-provider `ru-direct` (24h refresh, MRS format) — Mihomo-native
+  binary rule-set for RU-only domains.
+
 ## [0.85.0] - 2026-05-06
 
 ### Added

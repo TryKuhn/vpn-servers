@@ -115,10 +115,20 @@ def test_private_addresses_direct(alice: User, settings: Settings) -> None:
     assert "GEOIP,private,DIRECT,no-resolve" in rules
 
 
-def test_ru_ips_direct(alice: User, settings: Settings) -> None:
+def test_ru_direct_ordered_before_geoip_ru(
+    alice: User, settings: Settings
+) -> None:
+    """ru-direct must precede GEOIP,RU. The ordering matters: domain
+    matching happens before DNS resolve, so ru-direct rule-set fires
+    on the hostname directly. If GEOIP,RU comes first, traffic that
+    DNS-resolves to non-RU CDN IPs (e.g., Ozon's edge) would fall
+    through to MATCH,PROXY before ru-direct could match.
+    """
     config = build_client_config(alice, settings)
     rules = config["rules"]
-    assert "GEOIP,RU,DIRECT" in rules
+    ru_direct_idx = rules.index("RULE-SET,ru-direct,DIRECT")
+    geoip_ru_idx = rules.index("GEOIP,RU,DIRECT")
+    assert ru_direct_idx < geoip_ru_idx
 
 
 def test_no_resolve_only_on_private_rule(
