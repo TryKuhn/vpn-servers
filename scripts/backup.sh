@@ -23,7 +23,8 @@ tar czf "$ARCHIVE" \
     data/users.json \
     data/xray/config.json
 
-chmod 400 "$ARCHIVE"
+chmod 440 "$ARCHIVE"
+chgrp backup-readers "$ARCHIVE"
 
 # Rotate old backups (keep N most recent).
 ls -1t "$BACKUP_DIR"/vpn-state-*.tar.gz \
