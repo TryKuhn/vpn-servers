@@ -182,7 +182,7 @@ def _rules() -> list[str]:
         #    on the same machine they develop on. Whitelisting all of
         #    github.com is a reasonable trade-off: it's developer
         #    infrastructure, not a typical "ads/tracking" target.
-        "DOMAIN-SUFFIX,github.com,DIRECT",
+        "DOMAIN-SUFFIX,github.com,PROXY",
         # 1. Ads & trackers → REJECT.
         "RULE-SET,ads,REJECT",
         # 2. Telegram → PROXY. DCs are RU-registered but blocked inside
