@@ -183,6 +183,10 @@ def _rules() -> list[str]:
         #    github.com is a reasonable trade-off: it's developer
         #    infrastructure, not a typical "ads/tracking" target.
         "DOMAIN-SUFFIX,github.com,PROXY",
+        # RU-specific domains where geoip:RU misses (e.g. Ozon)
+        "DOMAIN-SUFFIX,ozon.ru,DIRECT",
+        "DOMAIN-SUFFIX,ozone.ru,DIRECT",
+        "DOMAIN-SUFFIX,ozonusercontent.com,DIRECT",
         # 1. Ads & trackers → REJECT.
         "RULE-SET,ads,REJECT",
         # 2. Telegram → PROXY. DCs are RU-registered but blocked inside
