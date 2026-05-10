@@ -29,6 +29,17 @@ help: ## Show this help
 	@echo "  make logs-xray       — tail xray logs only"
 	@echo "  make logs-manager    — tail manager logs only"
 	@echo ""
+	@echo "$(GREEN)Users:$(RESET)"
+	@echo "  make add-user NAME [NAME...]   — add user(s)"
+	@echo "  make remove-user NAME          — remove a user"
+	@echo "  make list-users                — list all users"
+	@echo "  make show-user NAME            — show user's subscription URL & QR"
+	@echo "  make rotate-token NAME         — issue new subscription URL"
+	@echo "  make sync                      — re-apply users.json to running xray"
+	@echo ""
+	@echo "$(GREEN)Operations:$(RESET)"
+	@echo "  make backup          — create state backup"
+	@echo ""
 	@echo "$(GREEN)Development:$(RESET)"
 	@echo "  make rebuild-manager — rebuild manager image after code changes"
 	@echo "  make shell-manager   — open shell inside manager container"
@@ -130,3 +141,78 @@ config-check: ## Validate the rendered xray config
 	@docker run --rm -v $$(pwd)/data/xray:/etc/xray:ro teddysun/xray \
 		xray -test -config /etc/xray/config.json
 	@echo "✓ Config is valid."
+
+# ============================================================================
+# User management
+# ============================================================================
+
+# Catch-all для позиционных аргументов в add-user / remove-user / show-user.
+# Make парсит "make add-user alice" как два target'а: add-user, alice.
+# Этот rule говорит: для любого target которого мы не знаем — ничего не делать.
+# ВАЖНО: побочный эффект — опечатка в имени target (e.g. "make remov-user")
+# не выдаст ошибку, тихо ничего не сделает. Будь внимателен.
+%:
+	@:
+
+.PHONY: add-user
+add-user: ## Add user(s). Usage: make add-user alice [bob carol]
+	@names="$(filter-out $@,$(MAKECMDGOALS))"; \
+	if [ -z "$$names" ]; then \
+		read -rp "User name(s) (space-separated): " names; \
+	fi; \
+	if [ -z "$$names" ]; then \
+		echo "ERROR: no user names provided" >&2; \
+		exit 1; \
+	fi; \
+	docker compose exec manager vpn-user add $$names
+
+.PHONY: remove-user
+remove-user: ## Remove a user. Usage: make remove-user alice
+	@name="$(filter-out $@,$(MAKECMDGOALS))"; \
+	if [ -z "$$name" ]; then \
+		read -rp "User name: " name; \
+	fi; \
+	if [ -z "$$name" ]; then \
+		echo "ERROR: no user name provided" >&2; \
+		exit 1; \
+	fi; \
+	docker compose exec manager vpn-user remove $$name
+
+.PHONY: list-users
+list-users: ## List all users
+	@docker compose exec manager vpn-user list
+
+.PHONY: show-user
+show-user: ## Show subscription URL & QR. Usage: make show-user alice
+	@name="$(filter-out $@,$(MAKECMDGOALS))"; \
+	if [ -z "$$name" ]; then \
+		read -rp "User name: " name; \
+	fi; \
+	if [ -z "$$name" ]; then \
+		echo "ERROR: no user name provided" >&2; \
+		exit 1; \
+	fi; \
+	docker compose exec manager vpn-user show $$name
+
+.PHONY: rotate-token
+rotate-token: ## Issue new subscription URL. Usage: make rotate-token alice
+	@name="$(filter-out $@,$(MAKECMDGOALS))"; \
+	if [ -z "$$name" ]; then \
+		read -rp "User name: " name; \
+	fi; \
+	if [ -z "$$name" ]; then \
+		echo "ERROR: no user name provided" >&2; \
+		exit 1; \
+	fi; \
+	docker compose exec manager vpn-user rotate-token $$name
+
+# ============================================================================
+# Backup
+# ============================================================================
+
+.PHONY: backup
+backup: ## Create a state backup
+	@sudo /opt/vpn-servers/scripts/backup.sh
+	@echo ""
+	@echo "→ Latest backups:"
+	@sudo ls -lt /var/backups/vpn/ | head -5

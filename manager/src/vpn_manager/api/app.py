@@ -61,7 +61,7 @@ def create_app(settings: Settings, store: UsersStore) -> FastAPI:
     @app.get("/sub/{token}")
     def subscription(
             token: str,
-            format: SubscriptionFormat = SubscriptionFormat.LINK,
+            format: SubscriptionFormat = SubscriptionFormat.CLASH,
     ) -> Response:
         """Serve the user's subscription in the requested format.
 
