@@ -91,8 +91,11 @@ down: ## Stop all services
 	docker compose down
 
 .PHONY: restart
-restart: ## Restart all services
+restart: ## Restart all services and re-sync users
 	docker compose restart
+	@sleep 3
+	@echo "→ Re-syncing users to xray runtime..."
+	@docker compose exec -T manager vpn-user sync
 
 .PHONY: status
 status: ## Show service status
