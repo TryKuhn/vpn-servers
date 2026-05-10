@@ -187,6 +187,8 @@ def _rules() -> list[str]:
     return [
         # Manual override: GitHub via PROXY (RU ISPs throttle direct).
         "DOMAIN-SUFFIX,github.com,PROXY",
+        # Manual override: MangaLib via DIRECT
+        "DOMAIN-SUFFIX,mangalib.me,DIRECT",
         # Ads & trackers.
         "RULE-SET,ads,REJECT",
         # RU-domains where geoip:RU misses (e.g., Ozon CDN).
