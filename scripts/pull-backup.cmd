@@ -14,7 +14,7 @@ if "%BACKUP_PASSPHRASE%"=="" (
 if not exist "%LOCAL_BACKUP_DIR%" mkdir "%LOCAL_BACKUP_DIR%"
 
 echo Finding latest backup on server...
-for /f "delims=" %%i in ('ssh -i "%SSH_KEY%" %SERVER% "ls -1t /var/backups/vpn/vpn-state-*.tar.gz | head -1"') do set REMOTE_PATH=%%i
+for /f "delims=" %%i in ('ssh vpn-server "sudo ls -1t /var/backups/vpn/vpn-state-*.tar.gz | head -1"') do set REMOTE_PATH=%%i
 
 if "%REMOTE_PATH%"=="" (
     echo ERROR: No backup found on server. Run backup.sh first.
