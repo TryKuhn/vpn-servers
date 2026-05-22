@@ -186,19 +186,19 @@ def _rules() -> list[str]:
     """
     return [
         # Manual override: GitHub via PROXY (RU ISPs throttle direct).
-        "DOMAIN-SUFFIX,github.com,PROXY",
+        # "DOMAIN-SUFFIX,github.com,PROXY",
         # Manual override: MangaLib via DIRECT
-        "DOMAIN-SUFFIX,mangalib.me,DIRECT",
+        # "DOMAIN-SUFFIX,mangalib.me,DIRECT",
         # Ads & trackers.
-        "RULE-SET,ads,REJECT",
+        # "RULE-SET,ads,REJECT",
         # RU-domains where geoip:RU misses (e.g., Ozon CDN).
-        "RULE-SET,ru-direct,DIRECT",
+        # "RULE-SET,ru-direct,DIRECT",
         # Telegram via PROXY.
-        "GEOIP,telegram,PROXY",
+        # "GEOIP,telegram,PROXY",
         # Private networks (RFC1918) — no DNS resolve.
-        "GEOIP,private,DIRECT,no-resolve",
+        # "GEOIP,private,DIRECT,no-resolve",
         # Other RU IPs → DIRECT.
-        "GEOIP,RU,DIRECT",
+        # "GEOIP,RU,DIRECT",
         # Everything else → PROXY.
         "MATCH,PROXY",
     ]
