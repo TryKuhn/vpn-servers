@@ -17,9 +17,10 @@ server {
     }
 }
 
-# HTTPS block on :443 - the actual subscription endpoint.
+# HTTPS block on :4430 - only reachable via the stream SNI proxy on :443.
+# Cloudflare (SNI=trykuhn.xyz) and WebSocket VPN traffic arrive here.
 server {
-    listen 443 ssl;
+    listen 127.0.0.1:4430 ssl;
     http2 on;
 
     server_name ${NGINX_DOMAIN};

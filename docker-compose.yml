@@ -7,9 +7,10 @@
 #    - xray:        the actual VLESS+Reality VPN server (host network, :443)
 #    - manager:     Python service for user management (CLI today, more later)
 #
-#  Network model: xray runs on host network (for clean :443 binding).
-#  Manager also runs on host network — it needs to reach xray's gRPC API
-#  at 127.0.0.1:10085 inside the same network namespace.
+#  Network model: all services run on host network.
+#  xray binds :8443 (Reality, localhost-only, fronted by nginx stream on :443)
+#  and :10443 (WebSocket, localhost-only). Manager reaches xray's gRPC API
+#  at 127.0.0.1:10085 in the same network namespace.
 # ============================================================================
 
 services:
@@ -67,7 +68,7 @@ services:
       config-init:
         condition: service_completed_successfully
     healthcheck:
-      test: [ "CMD-SHELL", "netstat -tlnp 2>/dev/null | grep -q \":$$SERVER_PORT.*LISTEN\" || exit 1" ]
+      test: [ "CMD-SHELL", "netstat -tlnp 2>/dev/null | grep -q ':8443.*LISTEN' || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 3

@@ -11,6 +11,15 @@
 
 FROM jonasal/nginx-certbot:5.4.1-alpine
 
-# Conf templates are rendered with envsubst at startup. The template name
-# must end in .conf.template - the entrypoint will produce conf.d/X.conf.
+# Override the default nginx.conf to add the stream {} block for SNI routing.
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# HTTP templates: rendered by the upstream 20-envsubst script into conf.d/.
 COPY templates/ /etc/nginx/templates/
+
+# Stream template: rendered by our 25-stream-config.sh into stream.d/.
+COPY stream/ /etc/nginx/stream-templates/
+
+# Custom entrypoint hook: runs before nginx starts, processes the stream template.
+COPY docker-entrypoint.d/ /docker-entrypoint.d/
+RUN chmod +x /docker-entrypoint.d/25-stream-config.sh
