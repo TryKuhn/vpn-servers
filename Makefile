@@ -28,6 +28,7 @@ help: ## Show this help
 	@echo "  make logs            — tail logs from all services"
 	@echo "  make logs-xray       — tail xray logs only"
 	@echo "  make logs-manager    — tail manager logs only"
+	@echo "  make logs-cloudflared — tail cloudflared logs only"
 	@echo ""
 	@echo "$(GREEN)Users:$(RESET)"
 	@echo "  make add-user NAME [NAME...]   — add user(s)"
@@ -116,6 +117,10 @@ logs-xray: ## Tail xray logs only
 .PHONY: logs-manager
 logs-manager: ## Tail manager logs only
 	docker compose logs -f manager
+
+.PHONY: logs-cloudflared
+logs-cloudflared: ## Tail cloudflared logs only
+	docker compose logs -f cloudflared
 
 # ============================================================================
 # Development

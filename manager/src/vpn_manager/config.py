@@ -43,6 +43,10 @@ class Settings:
     server_domain: str = ""
     ws_path: str = ""
     ws_port: int = 8443
+    # Subdomain served by cloudflared tunnel (e.g. "ws.trykuhn.xyz").
+    # When set, client configs point WebSocket traffic here instead of
+    # server_domain (which stays as the nginx/subscription domain).
+    cloudflare_ws_domain: str = ""
 
     # --- File paths (resolved to absolute) ----------------------------------
     data_dir: Path = field(default_factory=lambda: Path("/data"))
@@ -74,11 +78,22 @@ class Settings:
             server_domain=os.environ.get("NGINX_DOMAIN", ""),
             ws_path=os.environ.get("WS_PATH", ""),
             ws_port=int(os.environ.get("WS_PORT", "8443")),
+            cloudflare_ws_domain=os.environ.get("CLOUDFLARE_WS_DOMAIN", ""),
             data_dir=Path(os.environ.get("DATA_DIR", "/data")),
             subscription_base_url=os.environ.get(
                 "SUBSCRIPTION_BASE_URL", "http://localhost:8080"
             ),
         )
+
+    @property
+    def ws_domain(self) -> str:
+        """Domain for the WebSocket VPN endpoint.
+
+        Prefers the Cloudflare Tunnel subdomain when configured, so client
+        configs use the tunnel instead of the nginx reverse proxy path.
+        Falls back to server_domain (nginx via Cloudflare CDN).
+        """
+        return self.cloudflare_ws_domain or self.server_domain
 
     @property
     def subscription_url(self) -> str:

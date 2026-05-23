@@ -28,7 +28,7 @@ def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
     """
     outbounds: list[dict[str, Any]] = []
 
-    if settings.server_domain and settings.ws_path:
+    if settings.ws_domain and settings.ws_path:
         outbounds.append(_ws_proxy_outbound(user, settings))
         outbounds.append(_reality_proxy_outbound(user, settings, tag="reality-proxy"))
     else:
@@ -71,14 +71,14 @@ def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
 
 
 def _ws_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
-    """VLESS+WebSocket outbound through Cloudflare CDN — primary proxy."""
+    """VLESS+WebSocket outbound — via Cloudflare Tunnel or CDN proxy."""
     return {
         "tag": "proxy",
         "protocol": "vless",
         "settings": {
             "vnext": [
                 {
-                    "address": settings.server_domain,
+                    "address": settings.ws_domain,
                     "port": settings.ws_port,
                     "users": [{"id": user.uuid, "encryption": "none", "flow": ""}],
                 }
@@ -88,7 +88,7 @@ def _ws_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
             "network": "ws",
             "security": "tls",
             "tlsSettings": {
-                "serverName": settings.server_domain,
+                "serverName": settings.ws_domain,
                 "fingerprint": "chrome",
             },
             "wsSettings": {

@@ -52,7 +52,7 @@ def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
     """Build a complete Mihomo client config for the given user."""
     proxies = (
         [_ws_proxy_outbound(user, settings), _reality_proxy_outbound(user, settings)]
-        if settings.server_domain and settings.ws_path
+        if settings.ws_domain and settings.ws_path
         else [_reality_proxy_outbound(user, settings)]
     )
     return {
@@ -107,21 +107,21 @@ def _dns_section() -> dict[str, Any]:
 
 
 def _ws_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
-    """VLESS+WebSocket outbound through Cloudflare CDN — primary proxy."""
+    """VLESS+WebSocket outbound — via Cloudflare Tunnel or CDN proxy."""
     return {
         "name": "TryKuhnVpn",
         "type": "vless",
-        "server": settings.server_domain,
+        "server": settings.ws_domain,
         "port": settings.ws_port,
         "uuid": user.uuid,
         "network": "ws",
         "tls": True,
         "udp": True,
-        "servername": settings.server_domain,
+        "servername": settings.ws_domain,
         "client-fingerprint": "chrome",
         "ws-opts": {
             "path": f"/{settings.ws_path}",
-            "headers": {"Host": settings.server_domain},
+            "headers": {"Host": settings.ws_domain},
         },
     }
 

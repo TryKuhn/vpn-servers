@@ -146,3 +146,36 @@ services:
     depends_on:
       manager:
         condition: service_started
+
+  # ---------------------------------------------------------------------------
+  # cloudflared — Cloudflare Tunnel daemon
+  # ---------------------------------------------------------------------------
+  # Punches an outbound-only encrypted tunnel to Cloudflare's edge so the
+  # WebSocket VPN endpoint is reachable even when ISP DPI blocks VLESS over
+  # regular Cloudflare CDN. No inbound port needed — cloudflared dials out.
+  #
+  # Setup (one-time, in Cloudflare Zero Trust dashboard):
+  #   1. Networks → Tunnels → Create a tunnel → give it a name
+  #   2. Public Hostname: ws.<your-domain> → http://localhost:10443
+  #   3. Copy the tunnel token → CLOUDFLARE_TUNNEL_TOKEN in .env
+  #   4. Set CLOUDFLARE_WS_DOMAIN=ws.<your-domain> in .env
+  #
+  # If CLOUDFLARE_TUNNEL_TOKEN is not set, this container exits cleanly
+  # (exit 0) and does not restart — all other services are unaffected.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: vpn-cloudflared
+    restart: on-failure:5
+    network_mode: host
+    entrypoint: sh
+    command: >
+      -c 'if [ -z "$$TUNNEL_TOKEN" ]; then
+            echo "CLOUDFLARE_TUNNEL_TOKEN not set — cloudflared disabled";
+            exit 0;
+          fi;
+          exec cloudflared tunnel --no-autoupdate run'
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      xray:
+        condition: service_healthy

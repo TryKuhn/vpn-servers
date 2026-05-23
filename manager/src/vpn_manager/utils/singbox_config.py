@@ -47,7 +47,7 @@ def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
     """Build a complete sing-box client config for the given user."""
     outbounds: list[dict[str, Any]] = []
 
-    if settings.server_domain and settings.ws_path:
+    if settings.ws_domain and settings.ws_path:
         outbounds.append(_ws_proxy_outbound(user, settings))
         outbounds.append(_reality_proxy_outbound(user, settings, tag="reality-proxy"))
     else:
@@ -69,21 +69,21 @@ def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
 
 
 def _ws_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
-    """VLESS+WebSocket outbound through Cloudflare CDN — primary proxy."""
+    """VLESS+WebSocket outbound — via Cloudflare Tunnel or CDN proxy."""
     return {
         "type": "vless",
         "tag": "proxy",
-        "server": settings.server_domain,
+        "server": settings.ws_domain,
         "server_port": settings.ws_port,
         "uuid": user.uuid,
         "transport": {
             "type": "ws",
             "path": f"/{settings.ws_path}",
-            "headers": {"Host": settings.server_domain},
+            "headers": {"Host": settings.ws_domain},
         },
         "tls": {
             "enabled": True,
-            "server_name": settings.server_domain,
+            "server_name": settings.ws_domain,
             "utls": {
                 "enabled": True,
                 "fingerprint": "chrome",
