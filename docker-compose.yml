@@ -165,17 +165,11 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: vpn-cloudflared
-    restart: on-failure:5
+    restart: unless-stopped
     network_mode: host
-    entrypoint: sh
-    command: >
-      -c 'if [ -z "$$TUNNEL_TOKEN" ]; then
-            echo "CLOUDFLARE_TUNNEL_TOKEN not set — cloudflared disabled";
-            exit 0;
-          fi;
-          exec cloudflared tunnel --no-autoupdate run'
+    command: tunnel --no-autoupdate run
     environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:
       xray:
         condition: service_healthy
