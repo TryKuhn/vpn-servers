@@ -67,7 +67,7 @@ services:
       config-init:
         condition: service_completed_successfully
     healthcheck:
-      test: [ "CMD-SHELL", "/bin/netstat -tlnp 2>/dev/null | grep -q ':443.*LISTEN' || exit 1" ]
+      test: [ "CMD-SHELL", "netstat -tlnp 2>/dev/null | grep -q \":$$SERVER_PORT.*LISTEN\" || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -106,10 +106,10 @@ services:
         condition: service_completed_successfully
 
   # ---------------------------------------------------------------------------
-  # nginx — TLS termination for the subscription server
+  # nginx — TLS termination for the subscription server + WebSocket proxy
   # ---------------------------------------------------------------------------
-  # Listens on :8443 (HTTPS) for subscription URLs and :80 (HTTP) for
-  # Let's Encrypt ACME-challenge. Forwards to manager:8080 over plain HTTP.
+  # Listens on :443 (HTTPS) for subscription URLs and WebSocket (VPN),
+  # and :80 (HTTP) for Let's Encrypt ACME-challenge. Forwards to manager:8080.
   # Bundled with certbot for automatic certificate renewal.
   nginx:
     build:

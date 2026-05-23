@@ -11,15 +11,15 @@ server {
     }
 
     # Anything else on :80 - return 404. We don't want to leak that
-    # there's a subscription server here; it's only available on :8443.
+    # there's a subscription server here; it's only available on :443.
     location / {
         return 404;
     }
 }
 
-# HTTPS block on :8443 - the actual subscription endpoint.
+# HTTPS block on :443 - the actual subscription endpoint.
 server {
-    listen 8443 ssl;
+    listen 443 ssl;
     http2 on;
 
     server_name ${NGINX_DOMAIN};
