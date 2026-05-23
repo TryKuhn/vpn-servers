@@ -17,9 +17,10 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # HTTP templates: rendered by the upstream 20-envsubst script into conf.d/.
 COPY templates/ /etc/nginx/templates/
 
-# Stream template: rendered by our 25-stream-config.sh into stream.d/.
+# Stream template: rendered by 25-stream-config.sh into stream.d/ at startup.
 COPY stream/ /etc/nginx/stream-templates/
 
 # Custom entrypoint hook: runs before nginx starts, processes the stream template.
-COPY docker-entrypoint.d/ /docker-entrypoint.d/
+# Numbered 25- so it runs after the HTTP template envsubst (20-) but before nginx start.
+COPY 25-stream-config.sh /docker-entrypoint.d/25-stream-config.sh
 RUN chmod +x /docker-entrypoint.d/25-stream-config.sh
