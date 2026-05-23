@@ -112,7 +112,7 @@ def _ws_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
         "name": "TryKuhnVpn",
         "type": "vless",
         "server": settings.server_domain,
-        "port": 443,
+        "port": settings.ws_port,
         "uuid": user.uuid,
         "network": "ws",
         "tls": True,

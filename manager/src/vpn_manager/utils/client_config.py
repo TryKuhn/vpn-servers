@@ -79,7 +79,7 @@ def _ws_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
             "vnext": [
                 {
                     "address": settings.server_domain,
-                    "port": 443,
+                    "port": settings.ws_port,
                     "users": [{"id": user.uuid, "encryption": "none", "flow": ""}],
                 }
             ]

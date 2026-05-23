@@ -74,7 +74,7 @@ def _ws_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
         "type": "vless",
         "tag": "proxy",
         "server": settings.server_domain,
-        "server_port": 443,
+        "server_port": settings.ws_port,
         "uuid": user.uuid,
         "transport": {
             "type": "ws",
