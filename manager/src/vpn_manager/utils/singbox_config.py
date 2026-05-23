@@ -1,24 +1,3 @@
-"""Generation of sing-box client configurations.
-
-Sing-box is the proxy core used by V2RayTun, Hiddify, NekoBox, and other
-modern clients. Unlike the xray-config we serve elsewhere, these clients
-respect the routing rules we ship — so smart split-tunneling is delivered
-to the user automatically.
-
-Routing strategy (rules are evaluated top-to-bottom, first match wins):
-  1. Ads & trackers           → block
-  2. RU-blocked sites/IPs     → proxy (e.g. Twitter, LinkedIn — they need VPN)
-  3. RU services & private    → direct (banks, gov, medicine, ecommerce, RU IPs)
-  4. Everything else (final)  → proxy
-
-Rule-sets are downloaded from runetfreedom/russia-v2ray-rules-dat — the
-gold-standard collection for Russian users. Updates every 6 hours.
-
-The client must download rule-sets at first start. We use
-download_detour=proxy so this happens THROUGH the VPN — important for
-users behind whitelisting where GitHub itself may be blocked.
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -26,7 +5,6 @@ from typing import Any
 from vpn_manager.config import Settings
 from vpn_manager.models.user import User
 
-# Base URL for runetfreedom rule-sets. Files are auto-updated every 6 hours.
 _RULESET_BASE = (
     "https://raw.githubusercontent.com/runetfreedom/"
     "russia-v2ray-rules-dat/release/sing-box"
@@ -34,17 +12,17 @@ _RULESET_BASE = (
 
 
 def _ruleset_url(kind: str, tag: str) -> str:
-    """Build a remote rule-set URL.
-
-    Args:
-        kind: Either 'geosite' or 'geoip'.
-        tag: Category name without the kind prefix, e.g. 'ru-blocked'.
-    """
+    """Build a remote rule-set URL for the given geo kind and tag."""
     return f"{_RULESET_BASE}/rule-set-{kind}/{kind}-{tag}.srs"
 
 
 def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
-    """Build a complete sing-box client config for the given user."""
+    """Build a complete sing-box client config for the given user.
+
+    When ws_domain and ws_path are configured, the WebSocket outbound is
+    primary (tagged 'proxy') and Reality is a named fallback. Otherwise
+    Reality is the sole proxy.
+    """
     outbounds: list[dict[str, Any]] = []
 
     if settings.ws_domain and settings.ws_path:
@@ -69,7 +47,7 @@ def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
 
 
 def _ws_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
-    """VLESS+WebSocket outbound — via Cloudflare Tunnel or CDN proxy."""
+    """VLESS+WebSocket outbound via Cloudflare Tunnel or CDN proxy."""
     return {
         "type": "vless",
         "tag": "proxy",
@@ -93,7 +71,7 @@ def _ws_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
 
 
 def _reality_proxy_outbound(user: User, settings: Settings, tag: str) -> dict[str, Any]:
-    """VLESS+Reality outbound — direct connection, no CDN."""
+    """VLESS+Reality outbound — direct connection to server, no CDN."""
     return {
         "type": "vless",
         "tag": tag,
@@ -118,44 +96,22 @@ def _reality_proxy_outbound(user: User, settings: Settings, tag: str) -> dict[st
 
 
 def _route_section() -> dict[str, Any]:
-    """Build the route section — rules + rule-set definitions."""
+    """Build the route section with all rule-sets and ordered routing rules."""
     return {
-        # `final` is the catch-all; everything not caught by an explicit
-        # rule goes here. We send to proxy, so the default is "use VPN".
         "final": "proxy",
         "rules": [
-            # 1. Ads & trackers → block (highest priority).
             {
                 "rule_set": ["geosite-category-ads-all"],
                 "outbound": "block",
             },
-            # 2. RU-blocked sites & IPs → proxy.
-            #    These are Twitter, LinkedIn, Instagram, etc. — content
-            #    blocked in Russia. Users *want* them tunneled.
             {
-                "rule_set": [
-                    "geosite-ru-blocked",
-                    "geoip-ru-blocked",
-                ],
+                "rule_set": ["geosite-ru-blocked", "geoip-ru-blocked"],
                 "outbound": "proxy",
             },
-            # 3. Telegram is special: its IPs (149.154.x, 91.108.x) are
-            #    *registered* as Russian networks, so geoip-ru would
-            #    catch them. But Telegram is blocked inside Russia, so
-            #    sending it direct breaks the desktop client. Web-version
-            #    works because it goes through the proxy domain rule
-            #    (web.telegram.org doesn't match any direct rule).
-            #    This rule must come before geoip-ru below.
             {
-                "rule_set": [
-                    "geosite-telegram",
-                    "geoip-telegram",
-                ],
+                "rule_set": ["geosite-telegram", "geoip-telegram"],
                 "outbound": "proxy",
             },
-            # 4. RU services that work better/only with a Russian IP.
-            #    Banks, gov, medicine, ecommerce, plus the catch-all
-            #    `geoip-ru`.
             {
                 "rule_set": [
                     "geosite-category-bank-ru",
@@ -187,12 +143,7 @@ def _route_section() -> dict[str, Any]:
 
 
 def _remote_ruleset(kind: str, tag: str) -> dict[str, Any]:
-    """Build a single remote rule-set definition.
-
-    `download_detour: proxy` ensures the client downloads rule-sets THROUGH
-    the VPN. This is critical for users behind whitelisting — GitHub may
-    be unreachable directly, but the VPN tunnel still works.
-    """
+    """Build a single remote rule-set entry downloaded through the VPN proxy."""
     return {
         "tag": f"{kind}-{tag}",
         "type": "remote",

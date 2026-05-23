@@ -1,26 +1,3 @@
-"""Generation of Mihomo (Clash Meta) client configurations.
-
-Mihomo is the proxy core used by Clash Verge Rev (Windows/macOS/Linux),
-Clash Meta For Android (CMFA), and other modern Clash-family clients.
-Unlike sing-box config in V2RayTun/Hiddify (which strip our routing
-rules), Mihomo *applies* routing from the subscription as part of its
-core design.
-
-Routing strategy (rules are evaluated top-to-bottom, first match wins):
-  1. Ads & trackers           → REJECT
-  2. Telegram IPs             → PROXY (RU-registered but blocked in RU)
-  3. Private addresses        → DIRECT
-  4. Russian IPs              → DIRECT (banks, gov, ecommerce — most are
-                                here by IP if not by domain)
-  5. Everything else (MATCH)  → PROXY
-
-Rule-sets are downloaded from MetaCubeX/meta-rules-dat — the official
-repository for Mihomo. They auto-update every 24 hours per `interval`.
-
-The output is YAML, served as text/yaml. Mihomo clients import this URL
-as a "subscription" and refresh it periodically.
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -30,26 +7,18 @@ import yaml
 from vpn_manager.config import Settings
 from vpn_manager.models.user import User
 
-# Base URL for MetaCubeX rule-sets in MRS (binary) format.
-# Confirmed available as of 2026-05-06: category-ads-all, ru, telegram,
-# private. All return 200 OK on raw.githubusercontent.com.
 _RULESET_BASE = (
     "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo"
 )
 
 
 def _ruleset_url(kind: str, tag: str) -> str:
-    """Build a MetaCubeX rule-set URL.
-
-    Args:
-        kind: Either 'geosite' or 'geoip'.
-        tag: Category name without the kind prefix, e.g. 'category-ads-all'.
-    """
+    """Build a MetaCubeX rule-set URL for the given geo kind and tag."""
     return f"{_RULESET_BASE}/{kind}/{tag}.mrs"
 
 
 def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
-    """Build a complete Mihomo client config for the given user."""
+    """Build a complete Mihomo (Clash Meta) client config for the given user."""
     proxies = (
         [_ws_proxy_outbound(user, settings), _reality_proxy_outbound(user, settings)]
         if settings.ws_domain and settings.ws_path
@@ -70,10 +39,8 @@ def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
 
 
 def render_yaml(user: User, settings: Settings) -> str:
-    """Render the config as a YAML string ready to serve over HTTP."""
+    """Render the Mihomo config as a YAML string ready to serve over HTTP."""
     config = build_client_config(user, settings)
-    # Use safe_dump with sort_keys=False to preserve our intentional
-    # ordering (top-level fields like proxies before rules feels natural).
     rendered: str = yaml.safe_dump(
         config,
         default_flow_style=False,
@@ -84,16 +51,7 @@ def render_yaml(user: User, settings: Settings) -> str:
 
 
 def _dns_section() -> dict[str, Any]:
-    """DNS configuration.
-
-    We use redir-host mode (not fake-ip) so that GEOIP rules can match
-    the real destination IP of each domain. With fake-ip mode, all
-    domains resolve to 198.18.0.x and GEOIP,RU never matches — sites
-    like ozon.ru that aren't on a RU CDN get sent through PROXY by
-    fallthrough to MATCH.
-
-    redir-host is slower (real DNS round-trip per domain), but correct.
-    """
+    """DNS configuration using redir-host mode so GEOIP rules match real destination IPs."""
     return {
         "enable": True,
         "ipv6": False,
@@ -107,7 +65,7 @@ def _dns_section() -> dict[str, Any]:
 
 
 def _ws_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
-    """VLESS+WebSocket outbound — via Cloudflare Tunnel or CDN proxy."""
+    """VLESS+WebSocket outbound via Cloudflare Tunnel."""
     return {
         "name": "TryKuhnVpn",
         "type": "vless",
@@ -127,7 +85,7 @@ def _ws_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
 
 
 def _reality_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
-    """VLESS+Reality outbound — direct connection, no CDN."""
+    """VLESS+Reality outbound — direct connection to server, no CDN."""
     return {
         "name": "TryKuhnVpn-Reality",
         "type": "vless",
@@ -148,7 +106,7 @@ def _reality_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
 
 
 def _proxy_groups(proxy_names: list[str]) -> list[dict[str, Any]]:
-    """Single 'PROXY' group containing all VPN nodes + DIRECT escape."""
+    """Single PROXY group containing all VPN nodes plus a DIRECT escape hatch."""
     return [
         {
             "name": "PROXY",
@@ -159,13 +117,7 @@ def _proxy_groups(proxy_names: list[str]) -> list[dict[str, Any]]:
 
 
 def _rule_providers() -> dict[str, Any]:
-    """Remote MRS rule-sets fetched and cached by Mihomo.
-
-    - ads: trackers and ad domains, REJECTed before any routing.
-    - ru-direct: RU-only domains where geoip:RU misses
-      (Ozon's CDN, Госуслуги subdomains, Яндекс CDN, etc.).
-      Replaces the manual DOMAIN-SUFFIX whitelist from v0.85.
-    """
+    """Remote MRS rule-sets fetched and cached by Mihomo on first start."""
     return {
         "ads": {
             "type": "http",
@@ -186,39 +138,13 @@ def _rule_providers() -> dict[str, Any]:
     }
 
 
-def _remote_ruleset_domain(url: str) -> dict[str, Any]:
-    """Build a single remote rule-set definition (domain behavior)."""
-    return {
-        "type": "http",
-        "behavior": "domain",
-        "format": "mrs",
-        "url": url,
-        "interval": 86400,
-        "path": "./rule-providers/ads.mrs",
-    }
-
-
 def _rules() -> list[str]:
-    """Routing rules in priority order.
-
-    Order matters: manual overrides → ads-rejection →
-    domain-based RU whitelist (geoip-miss fix) → geoip routing.
-    """
+    """Routing rules evaluated top-to-bottom, first match wins."""
     return [
-        # Manual override: GitHub via PROXY (RU ISPs throttle direct).
-        # "DOMAIN-SUFFIX,github.com,PROXY",
-        # Manual override: MangaLib via DIRECT
-        # "DOMAIN-SUFFIX,mangalib.me,DIRECT",
-        # Ads & trackers.
-        # "RULE-SET,ads,REJECT",
-        # RU-domains where geoip:RU misses (e.g., Ozon CDN).
-        # "RULE-SET,ru-direct,DIRECT",
-        # Telegram via PROXY.
-        # "GEOIP,telegram,PROXY",
-        # Private networks (RFC1918) — no DNS resolve.
-        # "GEOIP,private,DIRECT,no-resolve",
-        # Other RU IPs → DIRECT.
-        # "GEOIP,RU,DIRECT",
-        # Everything else → PROXY.
+        "RULE-SET,ads,REJECT",
+        "RULE-SET,ru-direct,DIRECT",
+        "GEOIP,telegram,PROXY",
+        "GEOIP,private,DIRECT,no-resolve",
+        "GEOIP,RU,DIRECT",
         "MATCH,PROXY",
     ]

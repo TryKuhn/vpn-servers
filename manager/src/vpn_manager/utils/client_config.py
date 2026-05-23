@@ -1,11 +1,3 @@
-"""Generation of full xray client configurations for VPN clients.
-
-Subscription endpoints serve these as JSON. Clients (V2RayTun, Hiddify,
-v2rayN) import the URL once, then poll periodically for updates. The
-config replaces the client's previous settings entirely — including
-routing rules.
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -17,14 +9,9 @@ from vpn_manager.models.user import User
 def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
     """Build a full xray client config for the given user.
 
-    Routing strategy ('smart routing'):
-        - Ads & trackers     → block (saves bandwidth, faster pages)
-        - RU IPs & gov sites → direct (banks/gosuslugi see real IP)
-        - Private networks   → direct (don't tunnel local LAN)
-        - Everything else    → proxy through VPN
-
-    Primary proxy: VLESS+WebSocket via Cloudflare (when server_domain is set).
-    Fallback proxy: VLESS+Reality (always included as secondary outbound).
+    When ws_domain and ws_path are configured, includes a WebSocket outbound
+    as the primary proxy and Reality as a named fallback. Otherwise Reality
+    is the sole proxy tagged simply as 'proxy'.
     """
     outbounds: list[dict[str, Any]] = []
 
@@ -71,7 +58,7 @@ def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
 
 
 def _ws_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
-    """VLESS+WebSocket outbound — via Cloudflare Tunnel or CDN proxy."""
+    """VLESS+WebSocket outbound via Cloudflare Tunnel or CDN proxy."""
     return {
         "tag": "proxy",
         "protocol": "vless",
@@ -99,7 +86,7 @@ def _ws_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
 
 
 def _reality_proxy_outbound(user: User, settings: Settings, tag: str) -> dict[str, Any]:
-    """VLESS+Reality outbound — direct connection, no CDN."""
+    """VLESS+Reality outbound — direct connection to server, no CDN."""
     return {
         "tag": tag,
         "protocol": "vless",

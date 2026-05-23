@@ -1,10 +1,3 @@
-"""FastAPI application factory.
-
-The HTTP API serves subscription URLs to VPN clients. Clients import
-their personal subscription URL once; the client app polls it
-periodically for config updates.
-"""
-
 from __future__ import annotations
 
 import base64
@@ -26,11 +19,7 @@ log = logging.getLogger(__name__)
 
 
 class SubscriptionFormat(StrEnum):
-    """Format of the client config served by the subscription endpoint.
-
-    Values are exposed as query-param strings, so they're stable
-    public API and shouldn't be renamed lightly.
-    """
+    """Subscription config format requested via the `format` query parameter."""
 
     LINK = "link"
     XRAY = "xray"
@@ -39,15 +28,9 @@ class SubscriptionFormat(StrEnum):
 
 
 def create_app(settings: Settings, store: UsersStore) -> FastAPI:
-    """Build the FastAPI application with dependencies wired in.
-
-    We pass settings and store explicitly rather than using FastAPI's
-    Depends() machinery — this is a tiny app and explicit is clearer.
-    """
+    """Create the FastAPI application with settings and user store wired in."""
     app = FastAPI(
         title="vpn-manager subscription API",
-        # Hide docs in production. Subscription endpoints are not
-        # something we want to expose publicly via /docs.
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -55,7 +38,7 @@ def create_app(settings: Settings, store: UsersStore) -> FastAPI:
 
     @app.get("/health")
     def health() -> dict[str, str]:
-        """Liveness probe. Used by nginx upstream check."""
+        """Liveness probe."""
         return {"status": "ok"}
 
     @app.get("/sub/{token}")
@@ -63,22 +46,15 @@ def create_app(settings: Settings, store: UsersStore) -> FastAPI:
             token: str,
             format: SubscriptionFormat = SubscriptionFormat.CLASH,
     ) -> Response:
-        """Serve the user's subscription in the requested format.
+        """Serve the user's VPN config in the requested format.
 
-        Default (no `?format=`) is the classic base64 VLESS-link format
-        that's universally supported. xray, sing-box and clash JSON/YAML
-        formats are opt-in for clients that benefit from them.
-
-        Returns 404 if the token doesn't match any user.
-        Returns 422 (FastAPI default) if `format` is not a known value.
+        Returns 404 if no user has this subscription token.
+        Default format is Clash YAML (consumed by Clash Verge and CMFA).
         """
         user = _resolve_user(token, store)
 
         if format is SubscriptionFormat.CLASH:
             body = render_clash_config(user, settings)
-            # text/yaml is the de-facto Content-Type for Clash subscriptions.
-            # Mihomo clients accept text/plain too, but text/yaml is more
-            # honest about what we're returning.
             return Response(content=body, media_type="text/yaml")
 
         if format is SubscriptionFormat.SING_BOX:
@@ -91,7 +67,6 @@ def create_app(settings: Settings, store: UsersStore) -> FastAPI:
             body = json.dumps(config, indent=2, ensure_ascii=False)
             return Response(content=body, media_type="application/json")
 
-        # Default: base64-encoded VLESS share link.
         link = build_vless_link(user, settings)
         encoded = base64.b64encode(link.encode("utf-8")).decode("ascii")
         return Response(content=encoded, media_type="text/plain")
@@ -100,20 +75,10 @@ def create_app(settings: Settings, store: UsersStore) -> FastAPI:
 
 
 def _resolve_user(token: str, store: UsersStore) -> User:
-    """Look up the user owning this subscription token.
-
-    Raises:
-        HTTPException 404 if no user has this token.
-    """
-    # Linear scan is fine for our scale (<1000 users). If we ever grow
-    # past that, build an index when loading users.json.
+    """Look up the user by subscription token, raising HTTP 404 if not found."""
     for user in store.list_all():
         if user.subscription_token == token:
             return user
 
-    # Slow-equal length comparison was already done by string equality
-    # above with full content; we don't need timing-attack mitigation
-    # because tokens are 256-bit random and equally improbable to guess
-    # regardless of timing leaks.
     log.info("Unknown subscription token requested")
     raise HTTPException(status_code=404, detail="Not found")

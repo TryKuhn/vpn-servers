@@ -1,12 +1,3 @@
-"""Application configuration: settings loaded from environment.
-
-Settings are immutable after creation. To use:
-
-    >>> settings = Settings.from_env()
-    >>> settings.users_db_path
-    PosixPath('/data/users.json')
-"""
-
 from __future__ import annotations
 
 import os
@@ -16,54 +7,33 @@ from pathlib import Path
 
 @dataclass(frozen=True, slots=True)
 class Settings:
-    """Runtime configuration for vpn-manager.
+    """Runtime configuration loaded from environment variables."""
 
-    All values are loaded from environment variables, with sensible defaults
-    for development. In production (the docker container), values come from
-    the .env file mounted via env_file in docker-compose.yml.
-    """
-
-    # --- Server identity (used in VLESS links) ------------------------------
     server_ip: str
     server_port: int
     sni: str
     public_key: str
     short_id: str
 
-    # --- Cosmetics ----------------------------------------------------------
     country_flag: str = "🇫🇮"
     server_tag: str = "VPN"
 
-    # --- Xray API endpoint --------------------------------------------------
     xray_api_addr: str = "127.0.0.1:10085"
     xray_inbound_tag: str = "vless-in"
     xray_ws_inbound_tag: str | None = None
 
-    # --- WebSocket / Cloudflare endpoint ------------------------------------
     server_domain: str = ""
     ws_path: str = ""
     ws_port: int = 8443
-    # Subdomain served by cloudflared tunnel (e.g. "ws.trykuhn.xyz").
-    # When set, client configs point WebSocket traffic here instead of
-    # server_domain (which stays as the nginx/subscription domain).
     cloudflare_ws_domain: str = ""
 
-    # --- File paths (resolved to absolute) ----------------------------------
     data_dir: Path = field(default_factory=lambda: Path("/data"))
 
-    # --- Subscription server settings ---------------------------------------
     subscription_base_url: str = "http://localhost:8080"
 
     @classmethod
     def from_env(cls) -> Settings:
-        """Build Settings from environment variables.
-
-        Required env vars:
-            SERVER_IP, SERVER_PORT, SNI, PUBLIC_KEY, SHORT_ID
-
-        Optional:
-            COUNTRY_FLAG, SERVER_TAG, XRAY_API_ADDR, XRAY_INBOUND_TAG, DATA_DIR
-        """
+        """Build Settings from environment variables."""
         return cls(
             server_ip=_require_env("SERVER_IP"),
             server_port=int(_require_env("SERVER_PORT")),
@@ -87,37 +57,27 @@ class Settings:
 
     @property
     def ws_domain(self) -> str:
-        """Domain for the WebSocket VPN endpoint.
-
-        Prefers the Cloudflare Tunnel subdomain when configured, so client
-        configs use the tunnel instead of the nginx reverse proxy path.
-        Falls back to server_domain (nginx via Cloudflare CDN).
-        """
+        """WebSocket endpoint domain. Returns cloudflare_ws_domain if set, otherwise server_domain."""
         return self.cloudflare_ws_domain or self.server_domain
 
     @property
     def subscription_url(self) -> str:
-        """Base for building per-user subscription URLs.
-
-        e.g. settings.subscription_url + '/sub/' + token
-        """
+        """Base URL for constructing per-user subscription links."""
         return self.subscription_base_url.rstrip("/")
-
-    # --- Derived paths ------------------------------------------------------
 
     @property
     def users_db_path(self) -> Path:
-        """Path to the users database (users.json)."""
+        """Absolute path to users.json."""
         return self.data_dir / "users.json"
 
     @property
     def xray_config_path(self) -> Path:
-        """Path to the live xray config (rendered from template)."""
+        """Absolute path to the rendered xray config.json."""
         return self.data_dir / "xray" / "config.json"
 
 
 def _require_env(name: str) -> str:
-    """Get an environment variable or raise with a clear error message."""
+    """Return the value of a required environment variable, raising RuntimeError if missing or empty."""
     value = os.environ.get(name)
     if value is None or value == "":
         raise RuntimeError(

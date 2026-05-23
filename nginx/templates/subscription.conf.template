@@ -1,69 +1,47 @@
-# HTTP block on :80 - only for ACME-challenge.
-# All other HTTP requests are silently dropped (404 with no body).
 server {
     listen 80;
     server_name ${NGINX_DOMAIN};
 
-    # Let nginx-certbot's challenge handler run - it intercepts
-    # /.well-known/acme-challenge/* paths.
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
     }
 
-    # Anything else on :80 - return 404. We don't want to leak that
-    # there's a subscription server here; it's only available on :443.
     location / {
         return 404;
     }
 }
 
-# HTTPS block on :4430 - only reachable via the stream SNI proxy on :443.
-# Cloudflare (SNI=trykuhn.xyz) and WebSocket VPN traffic arrive here.
 server {
-    listen 127.0.0.1:4430 ssl;
+    listen 8443 ssl;
     http2 on;
 
     server_name ${NGINX_DOMAIN};
 
-    # Cert paths are managed by jonasal/nginx-certbot.
     ssl_certificate     /etc/letsencrypt/live/${NGINX_DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${NGINX_DOMAIN}/privkey.pem;
-
-    # Modern TLS only - TLS 1.2 minimum, prefer 1.3.
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers off;
     ssl_ciphers         "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305";
 
-    # Hide nginx version in Server: header.
     server_tokens off;
 
-    # Subscription endpoint: proxy to manager.
     location /sub/ {
-        # Manager runs on the host network, so 'host.docker.internal'
-        # resolves to the host. We added an extra_hosts entry in compose
-        # to make this work on Linux.
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-
-        # Subscription responses are tiny (a few KB). No buffering needed.
         proxy_buffering off;
-        # Strict timeout - subscription is a fast lookup.
         proxy_read_timeout 5s;
         proxy_connect_timeout 3s;
     }
 
-    # Health endpoint for ourselves to check that nginx is up.
     location /nginx-health {
         access_log off;
         return 200 "ok\n";
         default_type text/plain;
     }
 
-    # VLESS+WebSocket inbound — proxied to Xray's internal WS listener.
-    # Cloudflare terminates TLS; we receive plain WebSocket here.
     location /${WS_PATH} {
         proxy_pass http://127.0.0.1:10443;
         proxy_http_version 1.1;
@@ -72,12 +50,10 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        # Long timeout: VPN connections are long-lived.
         proxy_read_timeout 86400s;
         proxy_send_timeout 86400s;
     }
 
-    # Drop everything else.
     location / {
         return 404;
     }
