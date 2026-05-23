@@ -23,38 +23,43 @@ def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
         - Private networks   → direct (don't tunnel local LAN)
         - Everything else    → proxy through VPN
 
-    See docs/ARCHITECTURE.md for the rationale on this routing.
+    Primary proxy: VLESS+WebSocket via Cloudflare (when server_domain is set).
+    Fallback proxy: VLESS+Reality (always included as secondary outbound).
     """
+    outbounds: list[dict[str, Any]] = []
+
+    if settings.server_domain and settings.ws_path:
+        outbounds.append(_ws_proxy_outbound(user, settings))
+        outbounds.append(_reality_proxy_outbound(user, settings, tag="reality-proxy"))
+    else:
+        outbounds.append(_reality_proxy_outbound(user, settings, tag="proxy"))
+
+    outbounds += [
+        {"tag": "direct", "protocol": "freedom"},
+        {"tag": "block", "protocol": "blackhole"},
+    ]
+
     return {
         "log": {"loglevel": "warning"},
-        "outbounds": [
-            _proxy_outbound(user, settings),
-            {"tag": "direct", "protocol": "freedom"},
-            {"tag": "block", "protocol": "blackhole"},
-        ],
+        "outbounds": outbounds,
         "routing": {
             "domainStrategy": "IPIfNonMatch",
             "rules": [
-                # Ads first — even if hosted on RU IPs, we block them.
                 {
                     "type": "field",
                     "outboundTag": "block",
                     "domain": ["geosite:category-ads-all"],
                 },
-                # Russian gov domains — direct, even if their CDN is foreign.
                 {
                     "type": "field",
                     "outboundTag": "direct",
                     "domain": ["geosite:category-gov-ru"],
                 },
-                # RU IPs — direct (catches services hosted in Russia
-                # regardless of domain).
                 {
                     "type": "field",
                     "outboundTag": "direct",
                     "ip": ["geoip:ru", "geoip:private"],
                 },
-                # Everything else — through the VPN.
                 {
                     "type": "field",
                     "outboundTag": "proxy",
@@ -65,10 +70,38 @@ def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
     }
 
 
-def _proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
-    """Build the VLESS+Reality outbound — the actual VPN connection."""
+def _ws_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
+    """VLESS+WebSocket outbound through Cloudflare CDN — primary proxy."""
     return {
         "tag": "proxy",
+        "protocol": "vless",
+        "settings": {
+            "vnext": [
+                {
+                    "address": settings.server_domain,
+                    "port": 443,
+                    "users": [{"id": user.uuid, "encryption": "none", "flow": ""}],
+                }
+            ]
+        },
+        "streamSettings": {
+            "network": "ws",
+            "security": "tls",
+            "tlsSettings": {
+                "serverName": settings.server_domain,
+                "fingerprint": "chrome",
+            },
+            "wsSettings": {
+                "path": f"/{settings.ws_path}",
+            },
+        },
+    }
+
+
+def _reality_proxy_outbound(user: User, settings: Settings, tag: str) -> dict[str, Any]:
+    """VLESS+Reality outbound — direct connection, no CDN."""
+    return {
+        "tag": tag,
         "protocol": "vless",
         "settings": {
             "vnext": [

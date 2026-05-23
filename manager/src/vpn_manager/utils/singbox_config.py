@@ -45,37 +45,62 @@ def _ruleset_url(kind: str, tag: str) -> str:
 
 def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
     """Build a complete sing-box client config for the given user."""
+    outbounds: list[dict[str, Any]] = []
+
+    if settings.server_domain and settings.ws_path:
+        outbounds.append(_ws_proxy_outbound(user, settings))
+        outbounds.append(_reality_proxy_outbound(user, settings, tag="reality-proxy"))
+    else:
+        outbounds.append(_reality_proxy_outbound(user, settings, tag="proxy"))
+
+    outbounds += [
+        {"type": "direct", "tag": "direct"},
+        {"type": "block", "tag": "block"},
+    ]
+
     return {
         "log": {"level": "warn"},
-        "outbounds": [
-            _proxy_outbound(user, settings),
-            {"type": "direct", "tag": "direct"},
-            {"type": "block", "tag": "block"},
-        ],
+        "outbounds": outbounds,
         "route": _route_section(),
         "experimental": {
-            # cache_file is required by sing-box for remote rule-sets to
-            # work — without it, rules are re-downloaded on every start
-            # (and may fail if proxy is the download_detour).
             "cache_file": {"enabled": True}
         },
     }
 
 
-def _proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
-    """Build the VLESS+Reality outbound — the actual VPN connection.
-
-    Field layout differs from xray: in sing-box, server/uuid/flow live
-    directly on the outbound, and Reality lives inside tls.reality.
-    """
+def _ws_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
+    """VLESS+WebSocket outbound through Cloudflare CDN — primary proxy."""
     return {
         "type": "vless",
         "tag": "proxy",
+        "server": settings.server_domain,
+        "server_port": 443,
+        "uuid": user.uuid,
+        "transport": {
+            "type": "ws",
+            "path": f"/{settings.ws_path}",
+            "headers": {"Host": settings.server_domain},
+        },
+        "tls": {
+            "enabled": True,
+            "server_name": settings.server_domain,
+            "utls": {
+                "enabled": True,
+                "fingerprint": "chrome",
+            },
+        },
+    }
+
+
+def _reality_proxy_outbound(user: User, settings: Settings, tag: str) -> dict[str, Any]:
+    """VLESS+Reality outbound — direct connection, no CDN."""
+    return {
+        "type": "vless",
+        "tag": tag,
         "server": settings.server_ip,
         "server_port": settings.server_port,
         "uuid": user.uuid,
         "flow": "xtls-rprx-vision",
-        "network": "tcp",
         "tls": {
             "enabled": True,
             "server_name": settings.sni,

@@ -75,6 +75,7 @@ echo "→ Configuring UFW..."
 # Don't lock ourselves out: SSH first, then enable.
 ufw allow 22/tcp >/dev/null
 ufw allow 443/tcp >/dev/null
+ufw allow 8443/tcp >/dev/null
 
 # --force: skip the "are you sure" prompt
 ufw --force enable >/dev/null

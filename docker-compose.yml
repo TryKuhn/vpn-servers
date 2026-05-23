@@ -131,8 +131,9 @@ services:
     environment:
       # Variables consumed by jonasal/nginx-certbot at startup.
       CERTBOT_EMAIL: ${CERTBOT_EMAIL}
-      # Variable consumed by envsubst in our template.
+      # Variables consumed by envsubst in our template.
       NGINX_DOMAIN: ${NGINX_DOMAIN}
+      WS_PATH: ${WS_PATH}
       # Use the staging environment for Let's Encrypt during initial
       # setup. Set to '0' once you've verified everything works.
       # Staging has WAY more lenient rate limits.

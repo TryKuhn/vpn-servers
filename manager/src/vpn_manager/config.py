@@ -37,6 +37,12 @@ class Settings:
     # --- Xray API endpoint --------------------------------------------------
     xray_api_addr: str = "127.0.0.1:10085"
     xray_inbound_tag: str = "vless-in"
+    xray_ws_inbound_tag: str | None = None
+
+    # --- WebSocket / Cloudflare endpoint ------------------------------------
+    server_domain: str = ""
+    ws_path: str = ""
+    ws_port: int = 8443
 
     # --- File paths (resolved to absolute) ----------------------------------
     data_dir: Path = field(default_factory=lambda: Path("/data"))
@@ -64,6 +70,10 @@ class Settings:
             server_tag=os.environ.get("SERVER_TAG", "VPN"),
             xray_api_addr=os.environ.get("XRAY_API_ADDR", "127.0.0.1:10085"),
             xray_inbound_tag=os.environ.get("XRAY_INBOUND_TAG", "vless-in"),
+            xray_ws_inbound_tag=os.environ.get("XRAY_WS_INBOUND_TAG") or None,
+            server_domain=os.environ.get("NGINX_DOMAIN", ""),
+            ws_path=os.environ.get("WS_PATH", ""),
+            ws_port=int(os.environ.get("WS_PORT", "8443")),
             data_dir=Path(os.environ.get("DATA_DIR", "/data")),
             subscription_base_url=os.environ.get(
                 "SUBSCRIPTION_BASE_URL", "http://localhost:8080"

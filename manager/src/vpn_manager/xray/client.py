@@ -69,29 +69,21 @@ class XrayUserNotFoundError(XrayApiError):
 _VLESS_ACCOUNT_TYPE = "xray.proxy.vless.Account"
 
 
-def _build_vless_account(uuid: str, flow: str = "xtls-rprx-vision") -> typed_message_pb2.TypedMessage:
-    """Build a TypedMessage wrapping a VLess account proto.
-
-    xray expects user accounts to be type-erased into TypedMessage so the
-    same User type can carry any protocol's account schema.
-    """
-    account = vless_pb2.Account(
-        id=uuid,
-        flow=flow,
-        encryption="none",
-    )
+def _build_vless_account(uuid: str, flow: str) -> typed_message_pb2.TypedMessage:
+    """Build a TypedMessage wrapping a VLess account proto."""
+    account = vless_pb2.Account(id=uuid, flow=flow, encryption="none")
     return typed_message_pb2.TypedMessage(
         type=_VLESS_ACCOUNT_TYPE,
         value=account.SerializeToString(),
     )
 
 
-def _build_user_proto(user: User) -> user_pb2.User:
+def _build_user_proto(user: User, flow: str) -> user_pb2.User:
     """Convert our domain User into the xray protobuf User."""
     return user_pb2.User(
         level=0,
         email=user.email,
-        account=_build_vless_account(user.uuid),
+        account=_build_vless_account(user.uuid, flow=flow),
     )
 
 
@@ -124,38 +116,47 @@ class XrayClient:
     # ------------------------------------------------------------------------
 
     def add_user(self, user: User) -> None:
-        """Add a user to the running xray inbound, with no downtime.
+        """Add a user to the running xray inbound(s), with no downtime.
 
         Raises:
             XrayUserAlreadyExistsError: if `user.email` is already present.
             XrayApiUnavailableError: if xray is not responding.
             XrayApiError: for any other failure.
         """
-        op = command_pb2.AddUserOperation(user=_build_user_proto(user))
-        request = command_pb2.AlterInboundRequest(
-            tag=self.settings.xray_inbound_tag,
-            operation=_pack_operation(op),
-        )
-        self._call("AlterInbound (AddUser)", lambda: self._get_stub().AlterInbound(
-            request, timeout=self.timeout_seconds
-        ), email=user.email)
+        self._add_to_inbound(user, self.settings.xray_inbound_tag, flow="xtls-rprx-vision")
+        if self.settings.xray_ws_inbound_tag:
+            # WebSocket transport doesn't support Vision flow.
+            self._add_to_inbound(user, self.settings.xray_ws_inbound_tag, flow="")
 
     def remove_user(self, email: str) -> None:
-        """Remove a user from the running xray inbound.
+        """Remove a user from the running xray inbound(s).
 
         Raises:
             XrayUserNotFoundError: if `email` isn't currently in xray.
             XrayApiUnavailableError: if xray is not responding.
             XrayApiError: for any other failure.
         """
-        op = command_pb2.RemoveUserOperation(email=email)
-        request = command_pb2.AlterInboundRequest(
-            tag=self.settings.xray_inbound_tag,
-            operation=_pack_operation(op),
+        self._remove_from_inbound(email, self.settings.xray_inbound_tag)
+        if self.settings.xray_ws_inbound_tag:
+            self._remove_from_inbound(email, self.settings.xray_ws_inbound_tag)
+
+    def _add_to_inbound(self, user: User, tag: str, flow: str) -> None:
+        op = command_pb2.AddUserOperation(user=_build_user_proto(user, flow=flow))
+        request = command_pb2.AlterInboundRequest(tag=tag, operation=_pack_operation(op))
+        self._call(
+            f"AlterInbound (AddUser/{tag})",
+            lambda: self._get_stub().AlterInbound(request, timeout=self.timeout_seconds),
+            email=user.email,
         )
-        self._call("AlterInbound (RemoveUser)", lambda: self._get_stub().AlterInbound(
-            request, timeout=self.timeout_seconds
-        ), email=email)
+
+    def _remove_from_inbound(self, email: str, tag: str) -> None:
+        op = command_pb2.RemoveUserOperation(email=email)
+        request = command_pb2.AlterInboundRequest(tag=tag, operation=_pack_operation(op))
+        self._call(
+            f"AlterInbound (RemoveUser/{tag})",
+            lambda: self._get_stub().AlterInbound(request, timeout=self.timeout_seconds),
+            email=email,
+        )
 
     def close(self) -> None:
         """Close the gRPC channel. Idempotent."""

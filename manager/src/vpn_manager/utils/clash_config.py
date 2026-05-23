@@ -50,6 +50,11 @@ def _ruleset_url(kind: str, tag: str) -> str:
 
 def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
     """Build a complete Mihomo client config for the given user."""
+    proxies = (
+        [_ws_proxy_outbound(user, settings), _reality_proxy_outbound(user, settings)]
+        if settings.server_domain and settings.ws_path
+        else [_reality_proxy_outbound(user, settings)]
+    )
     return {
         "mixed-port": 7890,
         "mode": "rule",
@@ -57,8 +62,8 @@ def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
         "ipv6": False,
         "allow-lan": False,
         "dns": _dns_section(),
-        "proxies": [_proxy_outbound(user, settings)],
-        "proxy-groups": _proxy_groups(),
+        "proxies": proxies,
+        "proxy-groups": _proxy_groups([p["name"] for p in proxies]),
         "rule-providers": _rule_providers(),
         "rules": _rules(),
     }
@@ -101,15 +106,30 @@ def _dns_section() -> dict[str, Any]:
     }
 
 
-def _proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
-    """Build the VLESS+Reality outbound — the actual VPN connection.
-
-    Field layout follows Mihomo's clash YAML schema. Reality is
-    expressed via `reality-opts`, distinct from sing-box's `tls.reality`
-    and from xray's `streamSettings.realitySettings`.
-    """
+def _ws_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
+    """VLESS+WebSocket outbound through Cloudflare CDN — primary proxy."""
     return {
         "name": "TryKuhnVpn",
+        "type": "vless",
+        "server": settings.server_domain,
+        "port": 443,
+        "uuid": user.uuid,
+        "network": "ws",
+        "tls": True,
+        "udp": True,
+        "servername": settings.server_domain,
+        "client-fingerprint": "chrome",
+        "ws-opts": {
+            "path": f"/{settings.ws_path}",
+            "headers": {"Host": settings.server_domain},
+        },
+    }
+
+
+def _reality_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
+    """VLESS+Reality outbound — direct connection, no CDN."""
+    return {
+        "name": "TryKuhnVpn-Reality",
         "type": "vless",
         "server": settings.server_ip,
         "port": settings.server_port,
@@ -127,13 +147,13 @@ def _proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
     }
 
 
-def _proxy_groups() -> list[dict[str, Any]]:
-    """Single 'PROXY' group containing our VPN node + DIRECT escape."""
+def _proxy_groups(proxy_names: list[str]) -> list[dict[str, Any]]:
+    """Single 'PROXY' group containing all VPN nodes + DIRECT escape."""
     return [
         {
             "name": "PROXY",
             "type": "select",
-            "proxies": ["TryKuhnVpn", "DIRECT"],
+            "proxies": proxy_names + ["DIRECT"],
         }
     ]
 

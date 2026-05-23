@@ -56,6 +56,13 @@ if [[ -n "$current_priv" && "$FORCE" -eq 0 ]]; then
     exit 1
 fi
 
+current_ws_path=$(grep -E '^WS_PATH=' "$ENV_FILE" | cut -d= -f2-)
+if [[ -n "$current_ws_path" && "$FORCE" -eq 0 ]]; then
+    echo "ERROR: WS_PATH is already set in $ENV_FILE." >&2
+    echo "Use --force to overwrite (existing WS clients will be invalidated!)." >&2
+    exit 1
+fi
+
 # --- Generate keys via xray container ---------------------------------------
 
 echo "→ Generating x25519 keypair via xray..."
@@ -87,6 +94,11 @@ fi
 echo "→ Generating short ID..."
 sid=$(openssl rand -hex 8)
 
+# --- Generate WebSocket path ------------------------------------------------
+
+echo "→ Generating WebSocket path..."
+ws_path=$(openssl rand -hex 16)
+
 # --- Patch .env -------------------------------------------------------------
 
 echo "→ Writing keys to $ENV_FILE..."
@@ -95,10 +107,11 @@ echo "→ Writing keys to $ENV_FILE..."
 tmp=$(mktemp)
 trap "rm -f $tmp" EXIT
 
-awk -v priv="$priv" -v pub="$pub" -v sid="$sid" '
+awk -v priv="$priv" -v pub="$pub" -v sid="$sid" -v ws_path="$ws_path" '
     /^PRIVATE_KEY=/ { print "PRIVATE_KEY=" priv; next }
     /^PUBLIC_KEY=/  { print "PUBLIC_KEY=" pub; next }
     /^SHORT_ID=/    { print "SHORT_ID=" sid; next }
+    /^WS_PATH=/     { print "WS_PATH=" ws_path; next }
     { print }
 ' "$ENV_FILE" > "$tmp"
 
@@ -113,6 +126,7 @@ echo ""
 echo "  PRIVATE_KEY: <hidden>"
 echo "  PUBLIC_KEY:  $pub"
 echo "  SHORT_ID:    $sid"
+echo "  WS_PATH:     $ws_path"
 echo ""
 echo "Next steps:"
 echo "  1. Verify other vars in $ENV_FILE (SERVER_IP, SNI, etc.)"

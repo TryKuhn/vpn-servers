@@ -109,7 +109,8 @@ jobs:
           # Render config from template + .env, just like config-init does.
           set -a; source .env; set +a
           mkdir -p /tmp/deploy-validation
-          envsubst < config/xray/config.template.json \
+          envsubst '${SERVER_PORT} ${SNI} ${DEST} ${PRIVATE_KEY} ${SHORT_ID} ${WS_PATH}' \
+              < config/xray/config.template.json \
               > /tmp/deploy-validation/config.json
 
           # Pin the same xray image we use in production so the validator
