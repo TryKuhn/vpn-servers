@@ -24,7 +24,7 @@ class Settings:
 
     server_domain: str = ""
     ws_path: str = ""
-    ws_port: int = 8443
+    ws_port: int = 443
     cloudflare_ws_domain: str = ""
 
     data_dir: Path = field(default_factory=lambda: Path("/data"))
@@ -47,7 +47,7 @@ class Settings:
             xray_ws_inbound_tag=os.environ.get("XRAY_WS_INBOUND_TAG") or None,
             server_domain=os.environ.get("NGINX_DOMAIN", ""),
             ws_path=os.environ.get("WS_PATH", ""),
-            ws_port=int(os.environ.get("WS_PORT", "8443")),
+            ws_port=int(os.environ.get("WS_PORT", "443")),
             cloudflare_ws_domain=os.environ.get("CLOUDFLARE_WS_DOMAIN", ""),
             data_dir=Path(os.environ.get("DATA_DIR", "/data")),
             subscription_base_url=os.environ.get(

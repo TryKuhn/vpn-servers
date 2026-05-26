@@ -74,8 +74,10 @@ echo "→ Configuring UFW..."
 
 # Don't lock ourselves out: SSH first, then enable.
 ufw allow 22/tcp >/dev/null
+# Port 80: Let's Encrypt ACME HTTP-01 challenge (certbot needs this reachable).
+ufw allow 80/tcp >/dev/null
+# Port 443: nginx stream owns this — routes VPN (Reality) and subscriptions.
 ufw allow 443/tcp >/dev/null
-ufw allow 8443/tcp >/dev/null
 
 # --force: skip the "are you sure" prompt
 ufw --force enable >/dev/null

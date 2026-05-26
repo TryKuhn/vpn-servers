@@ -8,9 +8,11 @@
 #    - manager:     Python service for user management (CLI today, more later)
 #
 #  Network model: all services run on host network.
-#  xray binds :8443 (Reality, localhost-only, fronted by nginx stream on :443)
-#  and :10443 (WebSocket, localhost-only). Manager reaches xray's gRPC API
-#  at 127.0.0.1:10085 in the same network namespace.
+#  nginx stream owns :443 and routes by SNI:
+#    NGINX_DOMAIN  → nginx HTTPS on :4430  (subscriptions + WebSocket proxy)
+#    any other SNI → xray Reality on :8443 (VPN)
+#  xray also binds :10443 (WebSocket inbound, localhost-only).
+#  Manager reaches xray's gRPC API at 127.0.0.1:10085.
 # ============================================================================
 
 services:
@@ -68,7 +70,7 @@ services:
       config-init:
         condition: service_completed_successfully
     healthcheck:
-      test: [ "CMD-SHELL", "netstat -tlnp 2>/dev/null | grep -q ':443.*LISTEN' || exit 1" ]
+      test: [ "CMD-SHELL", "netstat -tlnp 2>/dev/null | grep -q ':8443.*LISTEN' || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -165,9 +167,13 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: vpn-cloudflared
+    profiles:
+      - cloudflared
     restart: unless-stopped
     network_mode: host
-    command: tunnel --no-autoupdate run
+    volumes:
+      - ./cloudflared-config.yml:/etc/cloudflared/config.yml:ro
+    command: tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:

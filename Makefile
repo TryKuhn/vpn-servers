@@ -9,6 +9,10 @@ CYAN  := \033[0;36m
 GREEN := \033[0;32m
 RESET := \033[0m
 
+# Enable the cloudflared profile when CLOUDFLARE_TUNNEL_TOKEN is non-empty in .env.
+# This prevents cloudflared from starting (and restart-looping) when no token is set.
+CLOUDFLARE_PROFILE := $(shell . .env 2>/dev/null; [ -n "$$CLOUDFLARE_TUNNEL_TOKEN" ] && echo "--profile cloudflared")
+
 # ============================================================================
 
 .PHONY: help
@@ -76,7 +80,7 @@ init: .env ## Generate Reality keys into .env
 
 .PHONY: up
 up: ## Start all services
-	docker compose up -d --build
+	docker compose $(CLOUDFLARE_PROFILE) up -d --build
 	@echo ""
 	@echo "✓ Services starting. Check status with: make status"
 	@echo "→ Waiting for services to be healthy..."
@@ -89,11 +93,11 @@ up: ## Start all services
 
 .PHONY: down
 down: ## Stop all services
-	docker compose down
+	docker compose $(CLOUDFLARE_PROFILE) down
 
 .PHONY: restart
 restart: ## Restart all services and re-sync users
-	docker compose restart
+	docker compose $(CLOUDFLARE_PROFILE) restart
 	@sleep 3
 	@echo "→ Re-syncing users to xray runtime..."
 	@docker compose exec -T manager vpn-user sync
