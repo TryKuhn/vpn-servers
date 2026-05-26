@@ -171,9 +171,7 @@ services:
       - cloudflared
     restart: unless-stopped
     network_mode: host
-    volumes:
-      - ./cloudflared-config.yml:/etc/cloudflared/config.yml:ro
-    command: tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
+    command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:
