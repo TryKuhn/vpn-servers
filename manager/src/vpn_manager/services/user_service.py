@@ -20,8 +20,8 @@ from vpn_manager.xray.client import (
     XrayApiError,
     XrayApiUnavailableError,
     XrayClient,
-    XrayUserAlreadyExistsError,
     XrayUserNotFoundError,
+    XrayUserAlreadyExistsError,
 )
 
 log = logging.getLogger(__name__)
@@ -165,11 +165,9 @@ class UserService:
 
         for user in users:
             try:
-                self.xray.add_user(user)
-                added += 1
-            except XrayUserAlreadyExistsError:
-                # Already in xray, that's the goal anyway.
-                log.debug("User %s already in xray; skipping", user.email)
+                newly = self.xray.sync_user(user)
+                if newly > 0:
+                    added += 1
             except XrayApiUnavailableError:
                 raise  # xray is completely down — let the caller decide
             except XrayApiError as e:
