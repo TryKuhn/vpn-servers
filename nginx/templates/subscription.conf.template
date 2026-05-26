@@ -13,7 +13,6 @@ server {
 
 server {
     listen 4430 ssl;
-    http2 on;
 
     server_name ${NGINX_DOMAIN};
 
