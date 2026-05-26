@@ -139,13 +139,16 @@ def _reality_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
 
 
 def _proxy_groups(proxy_names: list[str]) -> list[dict[str, Any]]:
-    """Auto selects fastest healthy proxy; PROXY lets user override manually.
+    """Auto uses Reality only; PROXY Selector exposes WS/CF for manual use.
 
-    CF is excluded from Auto: Cloudflare free tier throttles large transfers
-    so it always wins by latency but breaks video streaming. Users can select
-    it manually in PROXY when their ISP blocks the server IP directly.
+    WS and CF are excluded from Auto: ISP DPI identifies WebSocket traffic
+    as a VPN and throttles large transfers (YouTube, etc.) while allowing
+    Telegram (which ISPs whitelist). Reality evades DPI by impersonating
+    Apple iCloud TLS, so it works for all traffic. WS/CF stay in PROXY
+    for manual selection when the server IP is directly blocked by ISP.
     """
-    auto_proxies = [n for n in proxy_names if n != "TryKuhnVpn-CF"]
+    reality_proxies = [n for n in proxy_names if n == "TryKuhnVpn-Reality"]
+    auto_proxies = reality_proxies if reality_proxies else proxy_names
     return [
         {
             "name": "Auto",

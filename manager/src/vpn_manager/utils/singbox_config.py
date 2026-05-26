@@ -46,9 +46,9 @@ def _build_outbounds(user: User, settings: Settings) -> list[dict[str, Any]]:
     outbounds.append(_reality_outbound(user, settings))
     proxy_tags.append("reality-proxy")
 
-    # urltest: picks fastest healthy proxy — CF excluded because free-tier
-    # throttling makes it win by latency but fail for large transfers
-    auto_tags = [t for t in proxy_tags if t != "proxy-cf"]
+    # urltest: Reality only — WS/CF identified by ISP DPI, large traffic throttled
+    reality_tags = [t for t in proxy_tags if t == "reality-proxy"]
+    auto_tags = reality_tags if reality_tags else proxy_tags
     outbounds.append({
         "type": "urltest",
         "tag": "auto",
