@@ -8,28 +8,6 @@
   },
   "inbounds": [
     {
-      "tag": "vless-ws-in",
-      "listen": "127.0.0.1",
-      "port": 10443,
-      "protocol": "vless",
-      "settings": {
-        "clients": [],
-        "decryption": "none"
-      },
-      "streamSettings": {
-        "network": "ws",
-        "security": "none",
-        "wsSettings": {
-          "path": "/${WS_PATH}"
-        }
-      },
-      "sniffing": {
-        "enabled": true,
-        "destOverride": ["http", "tls", "quic"],
-        "routeOnly": false
-      }
-    },
-    {
       "tag": "vless-in",
       "listen": "0.0.0.0",
       "port": 8443,

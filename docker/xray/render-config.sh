@@ -32,7 +32,6 @@ require_var SNI
 require_var DEST
 require_var PRIVATE_KEY
 require_var SHORT_ID
-require_var WS_PATH
 
 # --- Render ------------------------------------------------------------------
 
@@ -40,7 +39,7 @@ mkdir -p "$(dirname "$OUTPUT")"
 
 # Pass an explicit list of vars to envsubst — only those will be substituted.
 # This prevents accidental substitution of unrelated $-things in the template.
-envsubst '${SNI} ${DEST} ${PRIVATE_KEY} ${SHORT_ID} ${WS_PATH}' \
+envsubst '${SNI} ${DEST} ${PRIVATE_KEY} ${SHORT_ID}' \
     < "$TEMPLATE" > "$OUTPUT"
 
 echo "✓ Rendered config:"

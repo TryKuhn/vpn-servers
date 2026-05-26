@@ -1,4 +1,0 @@
-ingress:
-  - hostname: ws.trykuhn.xyz
-    service: http://localhost:10443
-  - service: http_status:404

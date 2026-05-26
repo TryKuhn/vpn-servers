@@ -116,45 +116,29 @@ class XrayClient:
     # ------------------------------------------------------------------------
 
     def add_user(self, user: User) -> None:
-        """Add a user to the running xray inbound(s), with no downtime.
+        """Add a user to the running xray inbound, with no downtime.
 
         Raises:
-            XrayUserAlreadyExistsError: if `user.email` is already present in the
-                primary inbound. Callers that need idempotent per-inbound behaviour
-                (e.g. sync) should use sync_user() instead.
+            XrayUserAlreadyExistsError: if `user.email` is already present.
             XrayApiUnavailableError: if xray is not responding.
             XrayApiError: for any other failure.
         """
         self._add_to_inbound(user, self.settings.xray_inbound_tag, flow="xtls-rprx-vision")
-        if self.settings.xray_ws_inbound_tag:
-            # WebSocket transport doesn't support Vision flow.
-            self._add_to_inbound(user, self.settings.xray_ws_inbound_tag, flow="")
 
     def sync_user(self, user: User) -> int:
-        """Add user to every configured inbound independently, tolerating already-exists.
+        """Add user to the inbound, tolerating already-exists.
 
-        Unlike add_user(), each inbound is attempted separately so a user that is
-        already in Reality but not in the WS inbound (e.g. after a partial sync)
-        will still be added to the WS inbound.  Returns the number of inbounds
-        the user was newly added to (0 = already present everywhere).
+        Returns 1 if user was newly added, 0 if already present.
         """
-        params: list[tuple[str, str]] = [
-            (self.settings.xray_inbound_tag, "xtls-rprx-vision"),
-        ]
-        if self.settings.xray_ws_inbound_tag:
-            params.append((self.settings.xray_ws_inbound_tag, ""))
-
-        added = 0
-        for tag, flow in params:
-            try:
-                self._add_to_inbound(user, tag, flow)
-                added += 1
-            except XrayUserAlreadyExistsError:
-                log.debug("User %s already in %s; skipping", user.email, tag)
-        return added
+        try:
+            self._add_to_inbound(user, self.settings.xray_inbound_tag, "xtls-rprx-vision")
+            return 1
+        except XrayUserAlreadyExistsError:
+            log.debug("User %s already in %s; skipping", user.email, self.settings.xray_inbound_tag)
+            return 0
 
     def remove_user(self, email: str) -> None:
-        """Remove a user from the running xray inbound(s).
+        """Remove a user from the running xray inbound.
 
         Raises:
             XrayUserNotFoundError: if `email` isn't currently in xray.
@@ -162,8 +146,6 @@ class XrayClient:
             XrayApiError: for any other failure.
         """
         self._remove_from_inbound(email, self.settings.xray_inbound_tag)
-        if self.settings.xray_ws_inbound_tag:
-            self._remove_from_inbound(email, self.settings.xray_ws_inbound_tag)
 
     def _add_to_inbound(self, user: User, tag: str, flow: str) -> None:
         op = command_pb2.AddUserOperation(user=_build_user_proto(user, flow=flow))

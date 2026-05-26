@@ -30,100 +30,30 @@ def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
 
 
 def _build_outbounds(user: User, settings: Settings) -> list[dict[str, Any]]:
-    proxy_tags: list[str] = []
-    outbounds: list[dict[str, Any]] = []
-
-    # Primary WS: nginx direct — full bandwidth, no CDN throttling
-    if settings.server_domain and settings.ws_path:
-        outbounds.append(_ws_nginx_outbound(user, settings))
-        proxy_tags.append("proxy-ws")
-
-    # Fallback WS: Cloudflare Tunnel — bypasses ISP blocks on server IP
-    if settings.cloudflare_ws_domain and settings.ws_path:
-        outbounds.append(_ws_cf_outbound(user, settings))
-        proxy_tags.append("proxy-cf")
-
-    outbounds.append(_reality_outbound(user, settings))
-    proxy_tags.append("reality-proxy")
-
-    # urltest: Reality only — WS/CF identified by ISP DPI, large traffic throttled
-    reality_tags = [t for t in proxy_tags if t == "reality-proxy"]
-    auto_tags = reality_tags if reality_tags else proxy_tags
-    outbounds.append({
-        "type": "urltest",
-        "tag": "auto",
-        "outbounds": auto_tags,
-        "url": _TEST_URL,
-        "interval": "5m",
-        "tolerance": 50,
-    })
-
-    # selector: manual override, defaults to auto
-    outbounds.append({
-        "type": "selector",
-        "tag": "proxy",
-        "outbounds": ["auto"] + proxy_tags + ["direct"],
-        "default": "auto",
-    })
-
-    outbounds += [
+    outbounds: list[dict[str, Any]] = [
+        _reality_outbound(user, settings),
+        {
+            "type": "urltest",
+            "tag": "auto",
+            "outbounds": ["reality-proxy"],
+            "url": _TEST_URL,
+            "interval": "5m",
+            "tolerance": 50,
+        },
+        {
+            "type": "selector",
+            "tag": "proxy",
+            "outbounds": ["auto", "reality-proxy", "direct"],
+            "default": "auto",
+        },
         {"type": "direct", "tag": "direct"},
         {"type": "block", "tag": "block"},
     ]
-
     return outbounds
 
 
-def _ws_nginx_outbound(user: User, settings: Settings) -> dict[str, Any]:
-    """VLESS+WebSocket via nginx — direct to server, full bandwidth."""
-    return {
-        "type": "vless",
-        "tag": "proxy-ws",
-        "server": settings.server_domain,
-        "server_port": settings.ws_port,
-        "uuid": user.uuid,
-        "transport": {
-            "type": "ws",
-            "path": f"/{settings.ws_path}",
-            "headers": {"Host": settings.server_domain},
-        },
-        "tls": {
-            "enabled": True,
-            "server_name": settings.server_domain,
-            "utls": {
-                "enabled": True,
-                "fingerprint": "chrome",
-            },
-        },
-    }
-
-
-def _ws_cf_outbound(user: User, settings: Settings) -> dict[str, Any]:
-    """VLESS+WebSocket via Cloudflare Tunnel — fallback when server IP is ISP-blocked."""
-    return {
-        "type": "vless",
-        "tag": "proxy-cf",
-        "server": settings.cloudflare_ws_domain,
-        "server_port": settings.ws_port,
-        "uuid": user.uuid,
-        "transport": {
-            "type": "ws",
-            "path": f"/{settings.ws_path}",
-            "headers": {"Host": settings.cloudflare_ws_domain},
-        },
-        "tls": {
-            "enabled": True,
-            "server_name": settings.cloudflare_ws_domain,
-            "utls": {
-                "enabled": True,
-                "fingerprint": "chrome",
-            },
-        },
-    }
-
-
 def _reality_outbound(user: User, settings: Settings) -> dict[str, Any]:
-    """VLESS+Reality outbound — direct connection to server, no CDN."""
+    """VLESS+Reality outbound — direct connection to server."""
     return {
         "type": "vless",
         "tag": "reality-proxy",
@@ -147,39 +77,14 @@ def _reality_outbound(user: User, settings: Settings) -> dict[str, Any]:
     }
 
 
-_RU_DIRECT_DOMAINS: list[str] = [
-    # Госуслуги
-    "gosuslugi.ru",
-    # ФНС
-    "nalog.gov.ru",
-    "nalog.ru",
-    # Маркетплейсы
-    "wildberries.ru",
-    "wb.ru",
-    "wbstatic.net",
-    "ozon.ru",
-    # Яндекс
-    "yandex.ru",
-    "yandex.com",
-    "yandex.net",
-    "yandex-team.ru",
-    "ya.ru",
-    "yastatic.net",
-]
-
-
 def _route_section() -> dict[str, Any]:
-    """Route section: everything through VPN except explicitly listed Russian services."""
+    """Route section: all traffic through VPN except ads (blocked) and private IPs."""
     return {
         "final": "proxy",
         "rules": [
             {
                 "rule_set": ["geosite-category-ads-all"],
                 "outbound": "block",
-            },
-            {
-                "domain_suffix": _RU_DIRECT_DOMAINS,
-                "outbound": "direct",
             },
             {
                 "ip_is_private": True,

@@ -9,9 +9,6 @@ CYAN  := \033[0;36m
 GREEN := \033[0;32m
 RESET := \033[0m
 
-# Enable the cloudflared profile when CLOUDFLARE_TUNNEL_TOKEN is non-empty in .env.
-# This prevents cloudflared from starting (and restart-looping) when no token is set.
-CLOUDFLARE_PROFILE := $(shell . .env 2>/dev/null; [ -n "$$CLOUDFLARE_TUNNEL_TOKEN" ] && echo "--profile cloudflared")
 
 # ============================================================================
 
@@ -32,7 +29,6 @@ help: ## Show this help
 	@echo "  make logs            — tail logs from all services"
 	@echo "  make logs-xray       — tail xray logs only"
 	@echo "  make logs-manager    — tail manager logs only"
-	@echo "  make logs-cloudflared — tail cloudflared logs only"
 	@echo ""
 	@echo "$(GREEN)Users:$(RESET)"
 	@echo "  make add-user NAME [NAME...]   — add user(s)"
@@ -80,7 +76,7 @@ init: .env ## Generate Reality keys into .env
 
 .PHONY: up
 up: ## Start all services
-	docker compose $(CLOUDFLARE_PROFILE) up -d --build
+	docker compose up -d --build
 	@echo ""
 	@echo "✓ Services starting. Check status with: make status"
 	@echo "→ Waiting for services to be healthy..."
@@ -93,11 +89,11 @@ up: ## Start all services
 
 .PHONY: down
 down: ## Stop all services
-	docker compose $(CLOUDFLARE_PROFILE) down
+	docker compose down
 
 .PHONY: restart
 restart: ## Restart all services and re-sync users
-	docker compose $(CLOUDFLARE_PROFILE) restart
+	docker compose restart
 	@sleep 3
 	@echo "→ Re-syncing users to xray runtime..."
 	@docker compose exec -T manager vpn-user sync
@@ -122,9 +118,6 @@ logs-xray: ## Tail xray logs only
 logs-manager: ## Tail manager logs only
 	docker compose logs -f manager
 
-.PHONY: logs-cloudflared
-logs-cloudflared: ## Tail cloudflared logs only
-	docker compose logs -f cloudflared
 
 # ============================================================================
 # Development

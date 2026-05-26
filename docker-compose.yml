@@ -9,9 +9,8 @@
 #
 #  Network model: all services run on host network.
 #  nginx stream owns :443 and routes by SNI:
-#    NGINX_DOMAIN  → nginx HTTPS on :4430  (subscriptions + WebSocket proxy)
+#    NGINX_DOMAIN  → nginx HTTPS on :4430  (subscriptions)
 #    any other SNI → xray Reality on :8443 (VPN)
-#  xray also binds :10443 (WebSocket inbound, localhost-only).
 #  Manager reaches xray's gRPC API at 127.0.0.1:10085.
 # ============================================================================
 
@@ -109,10 +108,10 @@ services:
         condition: service_completed_successfully
 
   # ---------------------------------------------------------------------------
-  # nginx — TLS termination for the subscription server + WebSocket proxy
+  # nginx — TLS termination for the subscription server
   # ---------------------------------------------------------------------------
-  # Listens on :443 (HTTPS) for subscription URLs and WebSocket (VPN),
-  # and :80 (HTTP) for Let's Encrypt ACME-challenge. Forwards to manager:8080.
+  # Listens on :443 (HTTPS) for subscription URLs, and :80 (HTTP) for
+  # Let's Encrypt ACME-challenge. Forwards to manager:8080.
   # Bundled with certbot for automatic certificate renewal.
   nginx:
     build:
@@ -136,7 +135,6 @@ services:
       CERTBOT_EMAIL: ${CERTBOT_EMAIL}
       # Variables consumed by envsubst in our template.
       NGINX_DOMAIN: ${NGINX_DOMAIN}
-      WS_PATH: ${WS_PATH}
       # Use the staging environment for Let's Encrypt during initial
       # setup. Set to '0' once you've verified everything works.
       # Staging has WAY more lenient rate limits.
@@ -148,32 +146,3 @@ services:
     depends_on:
       manager:
         condition: service_started
-
-  # ---------------------------------------------------------------------------
-  # cloudflared — Cloudflare Tunnel daemon
-  # ---------------------------------------------------------------------------
-  # Punches an outbound-only encrypted tunnel to Cloudflare's edge so the
-  # WebSocket VPN endpoint is reachable even when ISP DPI blocks VLESS over
-  # regular Cloudflare CDN. No inbound port needed — cloudflared dials out.
-  #
-  # Setup (one-time, in Cloudflare Zero Trust dashboard):
-  #   1. Networks → Tunnels → Create a tunnel → give it a name
-  #   2. Public Hostname: ws.<your-domain> → http://localhost:10443
-  #   3. Copy the tunnel token → CLOUDFLARE_TUNNEL_TOKEN in .env
-  #   4. Set CLOUDFLARE_WS_DOMAIN=ws.<your-domain> in .env
-  #
-  # If CLOUDFLARE_TUNNEL_TOKEN is not set, this container exits cleanly
-  # (exit 0) and does not restart — all other services are unaffected.
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: vpn-cloudflared
-    profiles:
-      - cloudflared
-    restart: unless-stopped
-    network_mode: host
-    command: tunnel --no-autoupdate run
-    environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
-    depends_on:
-      xray:
-        condition: service_healthy

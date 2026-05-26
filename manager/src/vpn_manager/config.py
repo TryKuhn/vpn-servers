@@ -20,12 +20,8 @@ class Settings:
 
     xray_api_addr: str = "127.0.0.1:10085"
     xray_inbound_tag: str = "vless-in"
-    xray_ws_inbound_tag: str | None = None
 
     server_domain: str = ""
-    ws_path: str = ""
-    ws_port: int = 443
-    cloudflare_ws_domain: str = ""
 
     data_dir: Path = field(default_factory=lambda: Path("/data"))
 
@@ -44,21 +40,12 @@ class Settings:
             server_tag=os.environ.get("SERVER_TAG", "VPN"),
             xray_api_addr=os.environ.get("XRAY_API_ADDR", "127.0.0.1:10085"),
             xray_inbound_tag=os.environ.get("XRAY_INBOUND_TAG", "vless-in"),
-            xray_ws_inbound_tag=os.environ.get("XRAY_WS_INBOUND_TAG") or None,
             server_domain=os.environ.get("NGINX_DOMAIN", ""),
-            ws_path=os.environ.get("WS_PATH", ""),
-            ws_port=int(os.environ.get("WS_PORT", "443")),
-            cloudflare_ws_domain=os.environ.get("CLOUDFLARE_WS_DOMAIN", ""),
             data_dir=Path(os.environ.get("DATA_DIR", "/data")),
             subscription_base_url=os.environ.get(
                 "SUBSCRIPTION_BASE_URL", "http://localhost:8080"
             ),
         )
-
-    @property
-    def ws_domain(self) -> str:
-        """WebSocket endpoint domain. Returns cloudflare_ws_domain if set, otherwise server_domain."""
-        return self.cloudflare_ws_domain or self.server_domain
 
     @property
     def subscription_url(self) -> str:

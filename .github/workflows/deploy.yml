@@ -109,7 +109,7 @@ jobs:
           # Render config from template + .env, just like config-init does.
           set -a; source .env; set +a
           mkdir -p /tmp/deploy-validation
-          envsubst '${SNI} ${DEST} ${PRIVATE_KEY} ${SHORT_ID} ${WS_PATH}' \
+          envsubst '${SNI} ${DEST} ${PRIVATE_KEY} ${SHORT_ID}' \
               < config/xray/config.template.json \
               > /tmp/deploy-validation/config.json
 
