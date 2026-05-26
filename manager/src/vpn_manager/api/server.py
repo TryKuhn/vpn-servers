@@ -12,13 +12,15 @@ from __future__ import annotations
 from vpn_manager.api.app import create_app
 from vpn_manager.config import Settings
 from vpn_manager.storage.users_store import UsersStore
+from vpn_manager.xray.client import XrayClient
 
 
 def _build() -> object:
     """Construct the FastAPI app with production dependencies."""
     settings = Settings.from_env()
     store = UsersStore(settings.users_db_path)
-    return create_app(settings, store)
+    xray = XrayClient(settings=settings)
+    return create_app(settings, store, xray)
 
 
 # Top-level `app` is what uvicorn imports.
