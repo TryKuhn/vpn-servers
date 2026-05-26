@@ -13,7 +13,7 @@ from vpn_manager.storage.users_store import UsersStore
 from vpn_manager.utils.clash_config import render_yaml as render_clash_config
 from vpn_manager.utils.client_config import build_client_config as build_xray_config
 from vpn_manager.utils.singbox_config import build_client_config as build_singbox_config
-from vpn_manager.utils.vless_link import build_vless_link
+from vpn_manager.utils.vless_link import build_vless_links
 
 log = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ def create_app(settings: Settings, store: UsersStore) -> FastAPI:
             body = json.dumps(config, indent=2, ensure_ascii=False)
             return Response(content=body, media_type="application/json")
 
-        link = build_vless_link(user, settings)
+        link = build_vless_links(user, settings)
         encoded = base64.b64encode(link.encode("utf-8")).decode("ascii")
         return Response(content=encoded, media_type="text/plain")
 

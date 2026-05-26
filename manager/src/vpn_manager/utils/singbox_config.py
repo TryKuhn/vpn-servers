@@ -9,6 +9,7 @@ _RULESET_BASE = (
     "https://raw.githubusercontent.com/runetfreedom/"
     "russia-v2ray-rules-dat/release/sing-box"
 )
+_TEST_URL = "http://www.gstatic.com/generate_204"
 
 
 def _ruleset_url(kind: str, tag: str) -> str:
@@ -17,28 +18,10 @@ def _ruleset_url(kind: str, tag: str) -> str:
 
 
 def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
-    """Build a complete sing-box client config for the given user.
-
-    When ws_domain and ws_path are configured, the WebSocket outbound is
-    primary (tagged 'proxy') and Reality is a named fallback. Otherwise
-    Reality is the sole proxy.
-    """
-    outbounds: list[dict[str, Any]] = []
-
-    if settings.ws_domain and settings.ws_path:
-        outbounds.append(_ws_proxy_outbound(user, settings))
-        outbounds.append(_reality_proxy_outbound(user, settings, tag="reality-proxy"))
-    else:
-        outbounds.append(_reality_proxy_outbound(user, settings, tag="proxy"))
-
-    outbounds += [
-        {"type": "direct", "tag": "direct"},
-        {"type": "block", "tag": "block"},
-    ]
-
+    """Build a complete sing-box client config for the given user."""
     return {
         "log": {"level": "warn"},
-        "outbounds": outbounds,
+        "outbounds": _build_outbounds(user, settings),
         "route": _route_section(),
         "experimental": {
             "cache_file": {"enabled": True}
@@ -46,22 +29,65 @@ def build_client_config(user: User, settings: Settings) -> dict[str, Any]:
     }
 
 
-def _ws_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
-    """VLESS+WebSocket outbound via Cloudflare Tunnel or CDN proxy."""
+def _build_outbounds(user: User, settings: Settings) -> list[dict[str, Any]]:
+    proxy_tags: list[str] = []
+    outbounds: list[dict[str, Any]] = []
+
+    # Primary WS: nginx direct — full bandwidth, no CDN throttling
+    if settings.server_domain and settings.ws_path:
+        outbounds.append(_ws_nginx_outbound(user, settings))
+        proxy_tags.append("proxy-ws")
+
+    # Fallback WS: Cloudflare Tunnel — bypasses ISP blocks on server IP
+    if settings.cloudflare_ws_domain and settings.ws_path:
+        outbounds.append(_ws_cf_outbound(user, settings))
+        proxy_tags.append("proxy-cf")
+
+    outbounds.append(_reality_outbound(user, settings))
+    proxy_tags.append("reality-proxy")
+
+    # urltest: picks fastest healthy proxy automatically
+    outbounds.append({
+        "type": "urltest",
+        "tag": "auto",
+        "outbounds": proxy_tags,
+        "url": _TEST_URL,
+        "interval": "5m",
+        "tolerance": 50,
+    })
+
+    # selector: manual override, defaults to auto
+    outbounds.append({
+        "type": "selector",
+        "tag": "proxy",
+        "outbounds": ["auto"] + proxy_tags + ["direct"],
+        "default": "auto",
+    })
+
+    outbounds += [
+        {"type": "direct", "tag": "direct"},
+        {"type": "block", "tag": "block"},
+    ]
+
+    return outbounds
+
+
+def _ws_nginx_outbound(user: User, settings: Settings) -> dict[str, Any]:
+    """VLESS+WebSocket via nginx — direct to server, full bandwidth."""
     return {
         "type": "vless",
-        "tag": "proxy",
-        "server": settings.ws_domain,
+        "tag": "proxy-ws",
+        "server": settings.server_domain,
         "server_port": settings.ws_port,
         "uuid": user.uuid,
         "transport": {
             "type": "ws",
             "path": f"/{settings.ws_path}",
-            "headers": {"Host": settings.ws_domain},
+            "headers": {"Host": settings.server_domain},
         },
         "tls": {
             "enabled": True,
-            "server_name": settings.ws_domain,
+            "server_name": settings.server_domain,
             "utls": {
                 "enabled": True,
                 "fingerprint": "chrome",
@@ -70,11 +96,35 @@ def _ws_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
     }
 
 
-def _reality_proxy_outbound(user: User, settings: Settings, tag: str) -> dict[str, Any]:
+def _ws_cf_outbound(user: User, settings: Settings) -> dict[str, Any]:
+    """VLESS+WebSocket via Cloudflare Tunnel — fallback when server IP is ISP-blocked."""
+    return {
+        "type": "vless",
+        "tag": "proxy-cf",
+        "server": settings.cloudflare_ws_domain,
+        "server_port": settings.ws_port,
+        "uuid": user.uuid,
+        "transport": {
+            "type": "ws",
+            "path": f"/{settings.ws_path}",
+            "headers": {"Host": settings.cloudflare_ws_domain},
+        },
+        "tls": {
+            "enabled": True,
+            "server_name": settings.cloudflare_ws_domain,
+            "utls": {
+                "enabled": True,
+                "fingerprint": "chrome",
+            },
+        },
+    }
+
+
+def _reality_outbound(user: User, settings: Settings) -> dict[str, Any]:
     """VLESS+Reality outbound — direct connection to server, no CDN."""
     return {
         "type": "vless",
-        "tag": tag,
+        "tag": "reality-proxy",
         "server": settings.server_ip,
         "server_port": settings.server_port,
         "uuid": user.uuid,
@@ -95,8 +145,29 @@ def _reality_proxy_outbound(user: User, settings: Settings, tag: str) -> dict[st
     }
 
 
+_RU_DIRECT_DOMAINS: list[str] = [
+    # Госуслуги
+    "gosuslugi.ru",
+    # ФНС
+    "nalog.gov.ru",
+    "nalog.ru",
+    # Маркетплейсы
+    "wildberries.ru",
+    "wb.ru",
+    "wbstatic.net",
+    "ozon.ru",
+    # Яндекс
+    "yandex.ru",
+    "yandex.com",
+    "yandex.net",
+    "yandex-team.ru",
+    "ya.ru",
+    "yastatic.net",
+]
+
+
 def _route_section() -> dict[str, Any]:
-    """Build the route section with all rule-sets and ordered routing rules."""
+    """Route section: everything through VPN except explicitly listed Russian services."""
     return {
         "final": "proxy",
         "rules": [
@@ -105,21 +176,7 @@ def _route_section() -> dict[str, Any]:
                 "outbound": "block",
             },
             {
-                "rule_set": ["geosite-ru-blocked", "geoip-ru-blocked"],
-                "outbound": "proxy",
-            },
-            {
-                "rule_set": ["geosite-telegram", "geoip-telegram"],
-                "outbound": "proxy",
-            },
-            {
-                "rule_set": [
-                    "geosite-category-bank-ru",
-                    "geosite-category-gov-ru",
-                    "geosite-category-medicine-ru",
-                    "geosite-category-ecommerce-ru",
-                    "geoip-ru",
-                ],
+                "domain_suffix": _RU_DIRECT_DOMAINS,
                 "outbound": "direct",
             },
             {
@@ -129,15 +186,6 @@ def _route_section() -> dict[str, Any]:
         ],
         "rule_set": [
             _remote_ruleset("geosite", "category-ads-all"),
-            _remote_ruleset("geosite", "ru-blocked"),
-            _remote_ruleset("geoip", "ru-blocked"),
-            _remote_ruleset("geosite", "category-bank-ru"),
-            _remote_ruleset("geosite", "category-gov-ru"),
-            _remote_ruleset("geosite", "category-medicine-ru"),
-            _remote_ruleset("geosite", "category-ecommerce-ru"),
-            _remote_ruleset("geoip", "ru"),
-            _remote_ruleset("geosite", "telegram"),
-            _remote_ruleset("geoip", "telegram"),
         ],
     }
 

@@ -168,24 +168,23 @@ def _rule_providers() -> dict[str, Any]:
             "interval": 86400,
             "path": "./rule-providers/ads.mrs",
         },
-        "ru-direct": {
-            "type": "http",
-            "behavior": "domain",
-            "format": "mrs",
-            "url": "https://github.com/itdoginfo/allow-domains/releases/latest/download/russia_outside_domain.mrs",
-            "interval": 86400,
-            "path": "./rule-providers/ru-direct.mrs",
-        },
     }
 
 
 def _rules() -> list[str]:
-    """Routing rules evaluated top-to-bottom, first match wins."""
+    """Routing rules: everything through VPN except explicitly listed Russian services."""
     return [
         "RULE-SET,ads,REJECT",
-        "RULE-SET,ru-direct,DIRECT",
-        "GEOIP,telegram,PROXY",
+        # Russian services that must work without VPN (gov portals, marketplaces).
+        # Add new entries here when users report issues with a specific site.
+        "DOMAIN-SUFFIX,gosuslugi.ru,DIRECT",
+        "DOMAIN-SUFFIX,nalog.gov.ru,DIRECT",
+        "DOMAIN-SUFFIX,nalog.ru,DIRECT",
+        "DOMAIN-SUFFIX,wildberries.ru,DIRECT",
+        "DOMAIN-SUFFIX,wb.ru,DIRECT",
+        "DOMAIN-SUFFIX,wbstatic.net,DIRECT",
+        "DOMAIN-SUFFIX,ozon.ru,DIRECT",
+        "GEOSITE,yandex,DIRECT",
         "GEOIP,private,DIRECT,no-resolve",
-        "GEOIP,RU,DIRECT",
         "MATCH,PROXY",
     ]
