@@ -139,12 +139,18 @@ def _reality_proxy_outbound(user: User, settings: Settings) -> dict[str, Any]:
 
 
 def _proxy_groups(proxy_names: list[str]) -> list[dict[str, Any]]:
-    """Auto selects fastest healthy proxy; PROXY lets user override manually."""
+    """Auto selects fastest healthy proxy; PROXY lets user override manually.
+
+    CF is excluded from Auto: Cloudflare free tier throttles large transfers
+    so it always wins by latency but breaks video streaming. Users can select
+    it manually in PROXY when their ISP blocks the server IP directly.
+    """
+    auto_proxies = [n for n in proxy_names if n != "TryKuhnVpn-CF"]
     return [
         {
             "name": "Auto",
             "type": "url-test",
-            "proxies": proxy_names,
+            "proxies": auto_proxies,
             "url": _TEST_URL,
             "interval": 300,
             "tolerance": 50,
