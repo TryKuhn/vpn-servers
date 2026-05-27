@@ -372,7 +372,7 @@ def build_v2ray_subscription(device: Device, settings: Settings) -> str:
 
 
 def build_karing_subscription(device: Device, settings: Settings) -> dict[str, Any]:
-    """Sing-box JSON subscription для Karing и Hiddify: VLESS SplitHTTP + Hysteria2 + NaiveProxy."""
+    """Sing-box JSON subscription для Karing и Hiddify: Hysteria2 + NaiveProxy."""
     flag = _country_flag(settings.server_country)
     title = settings.subscription_profile_title
     suffix = f"@{device.user.name}{device.name}"
@@ -380,30 +380,6 @@ def build_karing_subscription(device: Device, settings: Settings) -> dict[str, A
 
     return {
         "outbounds": [
-            {
-                "type": "vless",
-                "tag": f"{flag} {title} VLESS {suffix}",
-                "server": settings.public_domain,
-                "server_port": settings.public_tcp_port,
-                "uuid": str(device.vless_uuid),
-                "tls": {
-                    "enabled": True,
-                    "server_name": settings.reality_sni,
-                    "utls": {
-                        "enabled": True,
-                        "fingerprint": settings.client_fingerprint,
-                    },
-                    "reality": {
-                        "enabled": True,
-                        "public_key": settings.reality_public_key,
-                        "short_id": settings.reality_short_id,
-                    },
-                },
-                "transport": {
-                    "type": "splithttp",
-                    "path": settings.xhttp_path,
-                },
-            },
             {
                 "type": "hysteria2",
                 "tag": f"{flag} {title} Hysteria {suffix}",
