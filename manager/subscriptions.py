@@ -81,12 +81,6 @@ def _base_route(settings: Settings, final: str = "PROXY") -> dict[str, Any]:
                 "outbound": "direct",
             },
             {
-                "geoip": [
-                    "ru",
-                ],
-                "outbound": "direct",
-            },
-            {
                 "protocol": [
                     "bittorrent",
                 ],
