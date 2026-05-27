@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+
 from manager.config import Settings
 from manager.models import Device
 
@@ -37,16 +38,26 @@ def build_singbox_subscription(device: Device, settings: Settings) -> dict:
             "strategy": "prefer_ipv4",
         },
         "outbounds": [
-            {"type": "selector", "tag": "PROXY", "outbounds": ["AUTO", "VLx-XHTTP", "Hysteria2", "NaiveProxy"], "default": "AUTO"},
-            {"type": "urltest", "tag": "AUTO", "outbounds": ["VLx-XHTTP", "Hysteria2", "NaiveProxy"], "url": "https://www.gstatic.com/generate_204", "interval": "5m"},
+            {"type": "selector", "tag": "PROXY", "outbounds": ["AUTO", "VLx-XHTTP", "Hysteria2", "NaiveProxy"],
+             "default": "AUTO"},
+            {"type": "urltest", "tag": "AUTO", "outbounds": ["VLx-XHTTP", "Hysteria2", "NaiveProxy"],
+             "url": "https://www.gstatic.com/generate_204", "interval": "5m"},
             {
-                "type": "vless", "tag": "VLx-XHTTP", "server": settings.public_domain, "server_port": settings.public_tcp_port,
+                "type": "vless", "tag": "VLx-XHTTP", "server": settings.public_domain,
+                "server_port": settings.public_tcp_port,
                 "uuid": device.vless_uuid,
-                "tls": {"enabled": True, "server_name": settings.reality_sni, "utls": {"enabled": True, "fingerprint": settings.client_fingerprint}, "reality": {"enabled": True, "public_key": settings.reality_public_key, "short_id": settings.reality_short_id}},
+                "tls": {"enabled": True, "server_name": settings.reality_sni,
+                        "utls": {"enabled": True, "fingerprint": settings.client_fingerprint},
+                        "reality": {"enabled": True, "public_key": settings.reality_public_key,
+                                    "short_id": settings.reality_short_id}},
                 "transport": {"type": "xhttp", "path": settings.xhttp_path},
             },
-            {"type": "hysteria2", "tag": "Hysteria2", "server": settings.hysteria_domain, "server_port": settings.public_udp_port, "password": hysteria_password, "tls": {"enabled": True, "server_name": settings.hysteria_domain}},
-            {"type": "naive", "tag": "NaiveProxy", "server": settings.naive_domain, "server_port": settings.public_tcp_port, "username": device.naive_username, "password": device.naive_password, "tls": {"enabled": True, "server_name": settings.naive_domain}},
+            {"type": "hysteria2", "tag": "Hysteria2", "server": settings.hysteria_domain,
+             "server_port": settings.public_udp_port, "username": device.hysteria_username,
+             "password": device.hysteria_password, "tls": {"enabled": True, "server_name": settings.hysteria_domain}},
+            {"type": "naive", "tag": "NaiveProxy", "server": settings.naive_domain,
+             "server_port": settings.public_tcp_port, "username": device.naive_username,
+             "password": device.naive_password, "tls": {"enabled": True, "server_name": settings.naive_domain}},
             {"type": "direct", "tag": "direct"},
             {"type": "block", "tag": "block"},
         ],
