@@ -12,7 +12,18 @@ fi
 echo "→ docker compose config"
 docker compose config -q
 echo "→ validate HAProxy"
-docker run --rm -v "$PWD/rendered/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro" "haproxy:${HAPROXY_VERSION:-3.0-alpine}" haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
+TMP_HAPROXY_CFG="$(mktemp)"
+sed \
+  -e 's/server xray xray:1443 check/server xray 127.0.0.1:1443 check/' \
+  -e 's/server naive naive:2443 check/server naive 127.0.0.1:2443 check/' \
+  rendered/haproxy/haproxy.cfg > "$TMP_HAPROXY_CFG"
+
+docker run --rm \
+  -v "$TMP_HAPROXY_CFG:/usr/local/etc/haproxy/haproxy.cfg:ro" \
+  "haproxy:${HAPROXY_VERSION:-3.0-alpine}" \
+  haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
+
+rm -f "$TMP_HAPROXY_CFG"
 echo "→ validate Xray"
 docker run --rm -v "$PWD/rendered/xray/config.json:/etc/xray/config.json:ro" "ghcr.io/xtls/xray-core:${XRAY_VERSION:-latest}" run -test -c /etc/xray/config.json
 echo "→ validate Caddy/Naive"
