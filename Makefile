@@ -10,11 +10,11 @@ help:
 	@printf "\033[0;32mMigrations:\033[0m\n  make migrate                 — alias for migrate.upgrade\n  make migrate.upgrade         — alembic upgrade head\n  make migrate.downgrade       — alembic downgrade -1\n  make migrate.revision MSG=x  — alembic revision --autogenerate\n\n"
 	@printf "\033[0;32mUsers:\033[0m\n  make add-user NAME=name      — add user with default device\n  make remove-user NAME=name   — remove user\n  make disable-user NAME=name  — disable user\n  make enable-user NAME=name   — enable user\n  make list-users              — list users\n  make show-user NAME=name     — show subscription and credentials\n  make rotate-token NAME=name  — rotate default device subscription token\n  make import-legacy FILE=f    — import legacy CSV\n  make sync                    — render configs and restart protocol services\n\n"
 install:
-	sudo ./scripts/install.sh
+	sudo bash ./scripts/install.sh
 init:
-	./scripts/generate-keys.sh
+	bash ./scripts/generate-keys.sh
 certs:
-	./scripts/issue-certs-standalone.sh
+	bash ./scripts/issue-certs-standalone.sh
 build:
 	$(COMPOSE) build
 db.up:
@@ -92,7 +92,7 @@ import-legacy:
 sync: render validate.rendered
 	$(COMPOSE) up -d --build xray hysteria naive haproxy
 backup:
-	./scripts/backup.sh
+	bash ./scripts/backup.sh
 restore:
 	@test -n "$(FILE)" || (echo "Usage: make restore FILE=backups/archive.tar.gz" && exit 1)
 	./scripts/restore-backup.sh "$(FILE)"
