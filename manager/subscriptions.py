@@ -309,7 +309,7 @@ def build_hysteria2_uri(device: Device, settings: Settings) -> str:
     params = urlencode({
         "sni": settings.hysteria_domain,
     })
-    display_name = f"{_country_flag(settings.server_country)} {settings.subscription_profile_title} @{device.user.name}{device.name}"
+    display_name = f"{_country_flag(settings.server_country)} {settings.subscription_profile_title} Hysteria @{device.user.name}{device.name}"
     name = quote(display_name, safe="")
     user = quote(device.hysteria_username, safe="")
     password = quote(device.hysteria_password, safe="")
@@ -335,7 +335,7 @@ def build_vless_xhttp_uri(device: Device, settings: Settings) -> str:
         "pbk": settings.reality_public_key,
         "sid": settings.reality_short_id,
     })
-    display_name = f"{_country_flag(settings.server_country)} {settings.subscription_profile_title} @{device.user.name}{device.name}"
+    display_name = f"{_country_flag(settings.server_country)} {settings.subscription_profile_title} VLESS @{device.user.name}{device.name}"
     name = quote(display_name, safe="")
     return f"vless://{device.vless_uuid}@{settings.public_domain}:{settings.public_tcp_port}?{params}#{name}"
 
