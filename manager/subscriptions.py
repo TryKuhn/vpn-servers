@@ -106,15 +106,6 @@ def _base_route(settings: Settings, final: str = "PROXY") -> dict[str, Any]:
     }
 
 
-def _common_meta(device: Device, settings: Settings, profile: str) -> dict[str, Any]:
-    return {
-        "title": f"{settings.subscription_profile_title} / {device.user.name} / {device.name}",
-        "device": device.name,
-        "user": device.user.name,
-        "profile": profile,
-    }
-
-
 def build_naive_subscription(device: Device, settings: Settings) -> dict[str, Any]:
     return {
         "log": {
@@ -162,7 +153,6 @@ def build_naive_subscription(device: Device, settings: Settings) -> dict[str, An
                 "enabled": True,
             }
         },
-        "_trykuhn": _common_meta(device, settings, "naive"),
     }
 
 
@@ -212,7 +202,6 @@ def build_hysteria_subscription(device: Device, settings: Settings) -> dict[str,
                 "enabled": True,
             }
         },
-        "_trykuhn": _common_meta(device, settings, "hysteria2"),
     }
 
 
@@ -311,12 +300,6 @@ def build_xray_xhttp_subscription(device: Device, settings: Settings) -> dict[st
                     "outboundTag": "block",
                 },
             ],
-        },
-        "_trykuhn": _common_meta(device, settings, "xray-vless-reality-xhttp")
-        | {
-            "socks": "127.0.0.1:10808",
-            "http": "127.0.0.1:10809",
-            "note": "Use with xray-core client, not sing-box/Hiddify.",
         },
     }
 
