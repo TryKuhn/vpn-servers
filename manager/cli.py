@@ -40,22 +40,75 @@ def cli_list_users():
 @app.command("show-user")
 def show_user(name: str = typer.Argument(...)):
     async def _inner():
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        from manager.models import Device, User
+
+        settings = get_settings()
+
+        base = settings.subscription_base_url.rstrip("/")
+        root_url = base[:-4] if base.endswith("/sub") else base
+
         async with AsyncSessionLocal() as session:
-            user = await get_user_by_name(session, name)
+            result = await session.execute(
+                select(User)
+                .options(selectinload(User.devices))
+                .where(User.name == name)
+            )
+            user = result.scalar_one_or_none()
+            devices = None
+
             if user is None:
-                typer.echo(f"User not found: {name}")
-                raise typer.Exit(1)
+                result = await session.execute(
+                    select(Device)
+                    .options(selectinload(Device.user))
+                    .where(Device.name == name)
+                )
+                device = result.scalar_one_or_none()
+
+                if device is None:
+                    typer.echo(f"User or device not found: {name}")
+                    raise typer.Exit(1)
+
+                user = device.user
+                devices = [device]
+            else:
+                devices = list(user.devices)
+
             typer.echo(f"User: {user.name}")
             typer.echo(f"Status: {'enabled' if user.enabled else 'disabled'}")
             typer.echo(f"Device limit: {user.device_limit}")
-            for device in user.devices:
+            typer.echo(f"Devices shown: {len(devices)}")
+
+            for device in devices:
+                token = device.subscription_token
+
                 typer.echo("")
                 typer.echo(f"Device: {device.name} ({device.os or 'unknown OS'})")
                 typer.echo(f"  status: {'enabled' if device.enabled else 'disabled'}")
-                typer.echo(f"  subscription: {get_settings().subscription_base_url}/{device.subscription_token}")
                 typer.echo(f"  vless_uuid: {device.vless_uuid}")
-                typer.echo(f"  hysteria: {device.hysteria_username}:{device.hysteria_password}")
-                typer.echo(f"  naive: {device.naive_username}:{device.naive_password}")
+
+                typer.echo("")
+                typer.echo("  Default / Hiddify-safe:")
+                typer.echo(f"    {root_url}/sub/{token}")
+
+                typer.echo("")
+                typer.echo("  NaiveProxy:")
+                typer.echo(f"    {root_url}/sub/naive/{token}")
+
+                typer.echo("")
+                typer.echo("  Hysteria2:")
+                typer.echo(f"    {root_url}/sub/hysteria/{token}")
+
+                typer.echo("")
+                typer.echo("  Xray VLESS Reality XHTTP:")
+                typer.echo(f"    {root_url}/sub/xray/{token}")
+
+                typer.echo("")
+                typer.echo("  Credentials:")
+                typer.echo("    hidden by default; use DB/admin tooling for rotation/debug")
+
     run(_inner())
 
 @app.command("remove-user")
