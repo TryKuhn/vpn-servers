@@ -126,10 +126,6 @@ def build_naive_subscription(device: Device, settings: Settings) -> dict[str, An
                 "tls": {
                     "enabled": True,
                     "server_name": settings.naive_domain,
-                    "alpn": [
-                        "h2",
-                        "http/1.1",
-                    ],
                 },
             },
             {
