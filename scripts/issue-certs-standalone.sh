@@ -61,7 +61,10 @@ sudo cp -L "$LIVE_DIR/privkey.pem" certs/hy.privkey.pem
 OWNER="${DEPLOY_OWNER:-deploy:deploy}"
 sudo chown -R "$OWNER" certs
 
-chmod 600 certs/*.pem
+sudo chmod 755 certs
+sudo chmod 644 certs/*fullchain.pem
+sudo chmod 600 certs/*privkey.pem
+sudo chmod 600 certs/privkey.pem 2>/dev/null || true
 
 echo "✓ certs written to:"
 echo "  certs/fullchain.pem"
