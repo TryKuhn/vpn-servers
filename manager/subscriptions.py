@@ -340,6 +340,28 @@ def build_vless_xhttp_uri(device: Device, settings: Settings) -> str:
     return f"vless://{device.vless_uuid}@{settings.public_domain}:{settings.public_tcp_port}?{params}#{name}"
 
 
+def build_vless_splithttp_uri(device: Device, settings: Settings) -> str:
+    """VLESS URI с SplitHTTP+Reality — для sing-box-совместимых клиентов (Karing, NekoBox)."""
+    params = urlencode({
+        "encryption": "none",
+        "type": "splithttp",
+        "path": settings.xhttp_path,
+        "security": "reality",
+        "sni": settings.reality_sni,
+        "fp": settings.client_fingerprint,
+        "pbk": settings.reality_public_key,
+        "sid": settings.reality_short_id,
+    })
+    display_name = f"{_country_flag(settings.server_country)} {settings.subscription_profile_title} VLESS @{device.user.name}{device.name}"
+    name = quote(display_name, safe="")
+    return f"vless://{device.vless_uuid}@{settings.public_domain}:{settings.public_tcp_port}?{params}#{name}"
+
+
+def build_splithttp_subscription(device: Device, settings: Settings) -> str:
+    uri = build_vless_splithttp_uri(device, settings)
+    return base64.b64encode(uri.encode()).decode()
+
+
 def build_v2ray_subscription(device: Device, settings: Settings) -> str:
     """Base64-encoded список URI — стандартный subscription формат для V2RayTun и аналогов."""
     uris = [
@@ -347,3 +369,63 @@ def build_v2ray_subscription(device: Device, settings: Settings) -> str:
         build_hysteria2_uri(device, settings),
     ]
     return base64.b64encode("\n".join(uris).encode()).decode()
+
+
+def build_karing_subscription(device: Device, settings: Settings) -> dict[str, Any]:
+    """Sing-box JSON subscription для Karing и Hiddify: VLESS SplitHTTP + Hysteria2 + NaiveProxy."""
+    flag = _country_flag(settings.server_country)
+    title = settings.subscription_profile_title
+    suffix = f"@{device.user.name}{device.name}"
+    hysteria_password = f"{device.hysteria_username}:{device.hysteria_password}"
+
+    return {
+        "outbounds": [
+            {
+                "type": "vless",
+                "tag": f"{flag} {title} VLESS {suffix}",
+                "server": settings.public_domain,
+                "server_port": settings.public_tcp_port,
+                "uuid": str(device.vless_uuid),
+                "tls": {
+                    "enabled": True,
+                    "server_name": settings.reality_sni,
+                    "utls": {
+                        "enabled": True,
+                        "fingerprint": settings.client_fingerprint,
+                    },
+                    "reality": {
+                        "enabled": True,
+                        "public_key": settings.reality_public_key,
+                        "short_id": settings.reality_short_id,
+                    },
+                },
+                "transport": {
+                    "type": "splithttp",
+                    "path": settings.xhttp_path,
+                },
+            },
+            {
+                "type": "hysteria2",
+                "tag": f"{flag} {title} Hysteria {suffix}",
+                "server": settings.hysteria_domain,
+                "server_port": settings.public_udp_port,
+                "password": hysteria_password,
+                "tls": {
+                    "enabled": True,
+                    "server_name": settings.hysteria_domain,
+                },
+            },
+            {
+                "type": "http",
+                "tag": f"{flag} {title} NaiveProxy {suffix}",
+                "server": settings.naive_domain,
+                "server_port": settings.public_tcp_port,
+                "username": device.naive_username,
+                "password": device.naive_password,
+                "tls": {
+                    "enabled": True,
+                    "server_name": settings.naive_domain,
+                },
+            },
+        ]
+    }

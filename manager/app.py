@@ -11,7 +11,9 @@ from manager.repository import get_device_by_token, record_subscription_request
 from manager.subscriptions import (
     build_hysteria2_subscription,
     build_hysteria_subscription,
+    build_karing_subscription,
     build_naive_subscription,
+    build_splithttp_subscription,
     build_v2ray_subscription,
     build_xray_xhttp_subscription,
     device_is_allowed,
@@ -162,3 +164,29 @@ async def subscription_hysteria2_uri(
     device = await _load_device_or_404(token, request, session)
     content = build_hysteria2_subscription(device, settings)
     return _plain_sub_response(content, device, settings, "hy2")
+
+
+@app.get("/sub/splithttp/{token}")
+async def subscription_splithttp(
+    token: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """Base64 VLESS SplitHTTP+Reality URI для sing-box-совместимых клиентов."""
+    device = await _load_device_or_404(token, request, session)
+    content = build_splithttp_subscription(device, settings)
+    return _plain_sub_response(content, device, settings, "splithttp")
+
+
+@app.get("/sub/karing/{token}")
+async def subscription_karing(
+    token: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """Sing-box JSON subscription для Karing, Hiddify и аналогов. VLESS SplitHTTP + Hysteria2 + NaiveProxy."""
+    device = await _load_device_or_404(token, request, session)
+    payload = build_karing_subscription(device, settings)
+    return _json_response(payload, device, settings, "karing")

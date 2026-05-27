@@ -111,28 +111,29 @@ def show_user(name: str = typer.Argument(...)):
                 typer.echo(f"  vless_uuid: {device.vless_uuid}")
 
                 typer.echo("")
-                typer.echo("  Default / Hiddify-safe:")
-                typer.echo(f"    {root_url}/sub/{token}")
+                typer.echo("  Karing / Hiddify (sing-box: VLESS SplitHTTP + Hysteria2 + NaiveProxy):")
+                typer.echo(f"    {root_url}/sub/karing/{token}")
 
                 typer.echo("")
-                typer.echo("  NaiveProxy:")
-                typer.echo(f"    {root_url}/sub/naive/{token}")
-
-                typer.echo("")
-                typer.echo("  Hysteria2 — V2RayTun / NekoBox (base64 URI):")
-                typer.echo(f"    {root_url}/sub/hy/{token}")
-
-                typer.echo("")
-                typer.echo("  Hysteria2 — sing-box JSON config:")
-                typer.echo(f"    {root_url}/sub/hysteria/{token}")
-
-                typer.echo("")
-                typer.echo("  V2RayTun / NekoBox (VLESS XHTTP+Reality, base64 URI):")
+                typer.echo("  V2RayTun / NekoRay (VLESS XHTTP + Hysteria2, base64 URI):")
                 typer.echo(f"    {root_url}/sub/v2ray/{token}")
+
+                typer.echo("")
+                typer.echo("  VLESS SplitHTTP+Reality (base64 URI):")
+                typer.echo(f"    {root_url}/sub/splithttp/{token}")
+
+                typer.echo("")
+                typer.echo("  Hysteria2 (base64 URI):")
+                typer.echo(f"    {root_url}/sub/hy/{token}")
 
                 typer.echo("")
                 typer.echo("  Xray JSON config (ручной импорт):")
                 typer.echo(f"    {root_url}/sub/xray/{token}")
+
+                typer.echo("")
+                typer.echo("  Sing-box JSON configs (ручной импорт):")
+                typer.echo(f"    NaiveProxy: {root_url}/sub/naive/{token}")
+                typer.echo(f"    Hysteria2:  {root_url}/sub/hysteria/{token}")
 
                 typer.echo("")
                 typer.echo("  Credentials:")
