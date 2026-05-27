@@ -25,9 +25,13 @@ CMD ["uvicorn", "manager.app:app", "--host", "0.0.0.0", "--port", "8080"]
 
 FROM caddy:2-builder AS naive-builder
 
-RUN xcaddy build --with github.com/klzgrad/forwardproxy@naive
+RUN xcaddy build \
+    --with github.com/caddyserver/forwardproxy=github.com/klzgrad/forwardproxy@naive
 
 FROM caddy:2 AS naive
+
 COPY --from=naive-builder /usr/bin/caddy /usr/bin/caddy
+
 EXPOSE 2443
+
 CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
