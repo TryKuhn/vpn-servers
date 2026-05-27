@@ -7,7 +7,7 @@ import typer
 from manager.config import get_settings
 from manager.db import AsyncSessionLocal
 from manager.renderer import render_all
-from manager.repository import create_user_with_default_device, get_user_by_name, import_legacy_csv, list_active_devices, list_users, remove_user, rotate_user_default_device_token, set_user_enabled
+from manager.repository import add_device_to_user, create_user_with_default_device, get_user_by_name, import_legacy_csv, list_active_devices, list_users, remove_user, rotate_user_default_device_token, set_user_enabled
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -24,6 +24,28 @@ def add_user(name: str = typer.Argument(...), device_name: Optional[str] = typer
             typer.echo(f"Device: {device.name}")
             typer.echo(f"Subscription URL: {get_settings().subscription_base_url}/{device.subscription_token}")
     run(_inner())
+
+@app.command("add-device")
+def add_device(
+    user_name: str = typer.Argument(...),
+    device_name: str = typer.Argument(...),
+    os_name: Optional[str] = typer.Option(None, "--os"),
+    token: Optional[str] = typer.Option(None, "--token"),
+):
+    async def _inner():
+        async with AsyncSessionLocal() as session:
+            device, created = await add_device_to_user(session, user_name=user_name, device_name=device_name, os_name=os_name)
+            if device is None:
+                typer.echo(f"User not found: {user_name}")
+                raise typer.Exit(1)
+            if token and created:
+                device.subscription_token = token
+                await session.flush()
+            await session.commit()
+            typer.echo(f"Device {'created' if created else 'already exists'}: {device.name}")
+            typer.echo(f"Subscription URL: {get_settings().subscription_base_url}/{device.subscription_token}")
+    run(_inner())
+
 
 @app.command("list-users")
 def cli_list_users():

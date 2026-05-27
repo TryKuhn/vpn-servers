@@ -88,6 +88,25 @@ def _make_device(user: User, device_name: str, os_name: str | None, subscription
     )
 
 
+async def add_device_to_user(
+    session: AsyncSession,
+    *,
+    user_name: str,
+    device_name: str,
+    os_name: str | None = None,
+) -> tuple[Device, bool] | tuple[None, None]:
+    user = await get_user_by_name(session, user_name)
+    if user is None:
+        return None, None
+    existing = next((d for d in user.devices if d.name.lower() == device_name.lower()), None)
+    if existing is not None:
+        return existing, False
+    device = _make_device(user, device_name, os_name, None, None)
+    session.add(device)
+    await session.flush()
+    return device, True
+
+
 async def remove_user(session: AsyncSession, name: str) -> bool:
     user = await get_user_by_name(session, name)
     if user is None:
