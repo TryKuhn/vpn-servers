@@ -51,7 +51,7 @@ def build_hysteria_config(devices: list[Device], settings: Settings) -> dict:
     return {
         "listen": ":443", "tls": {"cert": settings.tls_cert, "key": settings.tls_key}, "auth": {"type": "userpass", "userpass": userpass},
         "sniff": {"enable": True, "timeout": "2s", "tcpPorts": "80,443", "udpPorts": "all"},
-        "acl": {"inline": ["reject(all, tcp/25)", "reject(all, tcp/465)", "reject(all, tcp/587)", "reject(all, tcp/6881-6999)", "reject(all, udp/6881-6999)", "allow(all)"]},
+        "acl": {"inline": ["reject(all, tcp/25)", "reject(all, tcp/465)", "reject(all, tcp/587)", "reject(all, tcp/6881-6999)", "reject(all, udp/6881-6999)", "direct(all)"]},
         "masquerade": {"type": "proxy", "proxy": {"url": f"https://{settings.public_domain}", "rewriteHost": True}},
     }
 
