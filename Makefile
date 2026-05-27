@@ -59,6 +59,11 @@ add-user:
 	@test -n "$(NAME)" || (echo "Usage: make add-user NAME=MrNykterstein-PC" && exit 1)
 	$(CLI) add-user "$(NAME)"
 	$(MAKE) sync
+add-device:
+	@test -n "$(USER)" || (echo "Usage: make add-device USER=MrNykterstein DEVICE=MacBook OS=MacOS" && exit 1)
+	@test -n "$(DEVICE)" || (echo "Usage: make add-device USER=MrNykterstein DEVICE=MacBook OS=MacOS" && exit 1)
+	@test -n "$(OS)" || (echo "Usage: make add-device USER=MrNykterstein DEVICE=MacBook OS=MacOS" && exit 1)
+	$(CLI) add-device "$(USER)" "$(DEVICE)" --os "$(OS)"
 remove-user:
 	@test -n "$(NAME)" || (echo "Usage: make remove-user NAME=MrNykterstein-PC" && exit 1)
 	$(CLI) remove-user "$(NAME)"
