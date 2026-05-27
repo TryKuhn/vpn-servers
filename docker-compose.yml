@@ -1,148 +1,116 @@
-# ============================================================================
-#  vpn-servers — docker-compose
-# ============================================================================
-#
-#  Services:
-#    - config-init: one-shot, renders xray config from template via envsubst
-#    - xray:        the actual VLESS+Reality VPN server (host network, :443)
-#    - manager:     Python service for user management (CLI today, more later)
-#
-#  Network model: all services run on host network.
-#  nginx stream owns :443 and routes by SNI:
-#    NGINX_DOMAIN  → nginx HTTPS on :4430  (subscriptions)
-#    any other SNI → xray Reality on :8443 (VPN)
-#  Manager reaches xray's gRPC API at 127.0.0.1:10085.
-# ============================================================================
-
 services:
-  # ---------------------------------------------------------------------------
-  # config-init — render config.json from template
-  # ---------------------------------------------------------------------------
-  config-init:
-    image: alpine:3.20
-    container_name: vpn-config-init
-    restart: "no"
-    volumes:
-      - ./config/xray:/templates:ro
-      - ./data/xray:/output
-      - ./docker/xray/render-config.sh:/render.sh:ro
-    env_file:
-      - .env
-    command: >
-      sh -c "apk add --no-cache gettext > /dev/null && sh /render.sh"
-
-  # ---------------------------------------------------------------------------
-  # data-init — fix ownership of ./data for the manager user
-  # ---------------------------------------------------------------------------
-  # Manager runs as uid=1000 inside its container, but ./data is created by
-  # other services (config-init, xray) running as root. This one-shot fixes
-  # ownership so manager can write users.json.
-  data-init:
-    image: alpine:3.20
-    container_name: vpn-data-init
-    restart: "no"
-    volumes:
-      - ./data:/data
-    command: >
-      sh -c "
-        mkdir -p /data &&
-        chown -R 1000:1000 /data &&
-        chmod -R u+rwX,go+rX /data &&
-        echo '✓ /data ownership set to uid=1000'
-      "
-
-  # ---------------------------------------------------------------------------
-  # xray — the VPN server itself
-  # ---------------------------------------------------------------------------
-  xray:
-    image: teddysun/xray:25.12.8
-    container_name: vpn-xray
+  postgres:
+    image: postgres:${POSTGRES_VERSION:-16-alpine}
+    container_name: vpn-postgres
     restart: unless-stopped
-    network_mode: host
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - ./data/xray:/etc/xray
-      - ./docker/xray/entrypoint.sh:/entrypoint.sh:ro
-    env_file:
-      - .env
-    entrypoint: ["/bin/sh", "/entrypoint.sh"]
-    depends_on:
-      config-init:
-        condition: service_completed_successfully
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "netstat -tlnp 2>/dev/null | grep -q ':8443.*LISTEN' || exit 1" ]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 30s
+      retries: 10
 
-  # ---------------------------------------------------------------------------
-  # manager — Python service for user management
-  # ---------------------------------------------------------------------------
   manager:
     build:
-      context: ./manager
-      dockerfile: Dockerfile
-    image: vpn-manager:25.12.8
+      context: .
+      target: manager
     container_name: vpn-manager
     restart: unless-stopped
-
-    # Host network: needed to reach xray's gRPC API on 127.0.0.1:10085.
-    # Without this, "127.0.0.1" inside the manager container would point to
-    # itself, not to the xray container.
-    network_mode: host
-
-    volumes:
-      # Mount data directory so manager can persist users.json and read
-      # the live xray config (for sync operations).
-      - ./data:/data
-
     env_file:
       - .env
+    ports:
+      - "127.0.0.1:${MANAGER_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
-    # Manager waits for xray to be healthy before starting. This avoids
-    # spurious errors when manager tries to talk to xray's API too early.
+  xray:
+    image: ghcr.io/xtls/xray-core:${XRAY_VERSION:-latest}
+    container_name: vpn-xray
+    restart: unless-stopped
+    expose:
+      - "${XRAY_LISTEN_PORT:-1443}"
+    volumes:
+      - ./rendered/xray/config.json:/etc/xray/config.json:ro
+    command: ["run", "-c", "/etc/xray/config.json"]
+    healthcheck:
+      test: ["CMD", "xray", "run", "-test", "-c", "/etc/xray/config.json"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  hysteria:
+    image: tobyxdd/hysteria:${HYSTERIA_VERSION:-latest}
+    container_name: vpn-hysteria
+    restart: unless-stopped
+    ports:
+      - "${PUBLIC_UDP_PORT:-443}:443/udp"
+    volumes:
+      - ./rendered/hysteria/config.yaml:/etc/hysteria/config.yaml:ro
+      - ./certs:/certs:ro
+    command: ["server", "-c", "/etc/hysteria/config.yaml"]
+    healthcheck:
+      test: ["CMD", "hysteria", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  naive:
+    build:
+      context: .
+      target: naive
+    container_name: vpn-naive
+    restart: unless-stopped
+    expose:
+      - "2443"
+    volumes:
+      - ./rendered/naive/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      manager:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  haproxy:
+    image: haproxy:${HAPROXY_VERSION:-3.0-alpine}
+    container_name: vpn-haproxy
+    restart: unless-stopped
+    ports:
+      - "80:80/tcp"
+      - "${PUBLIC_TCP_PORT:-443}:443/tcp"
+    volumes:
+      - ./rendered/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     depends_on:
       xray:
         condition: service_healthy
-      data-init:
-        condition: service_completed_successfully
-
-  # ---------------------------------------------------------------------------
-  # nginx — TLS termination for the subscription server
-  # ---------------------------------------------------------------------------
-  # Listens on :443 (HTTPS) for subscription URLs, and :80 (HTTP) for
-  # Let's Encrypt ACME-challenge. Forwards to manager:8080.
-  # Bundled with certbot for automatic certificate renewal.
-  nginx:
-    build:
-      context: ./nginx
-      dockerfile: Dockerfile
-    image: vpn-nginx:latest
-    container_name: vpn-nginx
-    restart: unless-stopped
-
-    network_mode: host
-
-    # certbot needs persistent storage for certificates between restarts,
-    # otherwise we'd request a new cert every time and hit Let's Encrypt
-    # rate limits very quickly.
-    volumes:
-      - ./data/letsencrypt:/etc/letsencrypt
-      - ./data/certbot-www:/var/www/certbot
-
-    environment:
-      # Variables consumed by jonasal/nginx-certbot at startup.
-      CERTBOT_EMAIL: ${CERTBOT_EMAIL}
-      # Variables consumed by envsubst in our template.
-      NGINX_DOMAIN: ${NGINX_DOMAIN}
-      # Use the staging environment for Let's Encrypt during initial
-      # setup. Set to '0' once you've verified everything works.
-      # Staging has WAY more lenient rate limits.
-      STAGING: ${ACME_STAGING:-1}
-      # Renewal interval in seconds. Default 8h. We bump to 12h to be
-      # gentler on Let's Encrypt's servers.
-      RENEWAL_INTERVAL: 43200
-
-    depends_on:
+      naive:
+        condition: service_healthy
       manager:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

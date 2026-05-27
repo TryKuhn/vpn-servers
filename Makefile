@@ -1,223 +1,96 @@
-# ============================================================================
-#  vpn-servers — Makefile
-# ============================================================================
-
+SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
-SHELL := /bin/bash
-
-CYAN  := \033[0;36m
-GREEN := \033[0;32m
-RESET := \033[0m
-
-
-# ============================================================================
-
-.PHONY: help
-help: ## Show this help
-	@echo ""
-	@echo "$(CYAN)vpn-servers$(RESET) — operator commands"
-	@echo ""
-	@echo "$(GREEN)Setup:$(RESET)"
-	@echo "  make install         — bootstrap a fresh server (apt, docker, ufw)"
-	@echo "  make init            — generate Reality keys into .env"
-	@echo ""
-	@echo "$(GREEN)Lifecycle:$(RESET)"
-	@echo "  make up              — start all services (builds manager if needed)"
-	@echo "  make down            — stop all services"
-	@echo "  make restart         — restart all services"
-	@echo "  make status          — show service status"
-	@echo "  make logs            — tail logs from all services"
-	@echo "  make logs-xray       — tail xray logs only"
-	@echo "  make logs-manager    — tail manager logs only"
-	@echo ""
-	@echo "$(GREEN)Users:$(RESET)"
-	@echo "  make add-user NAME [NAME...]   — add user(s)"
-	@echo "  make remove-user NAME          — remove a user"
-	@echo "  make list-users                — list all users"
-	@echo "  make show-user NAME            — show user's subscription URL & QR"
-	@echo "  make rotate-token NAME         — issue new subscription URL"
-	@echo "  make sync                      — re-apply users.json to running xray"
-	@echo ""
-	@echo "$(GREEN)Operations:$(RESET)"
-	@echo "  make backup          — create state backup"
-	@echo ""
-	@echo "$(GREEN)Development:$(RESET)"
-	@echo "  make rebuild-manager — rebuild manager image after code changes"
-	@echo "  make shell-manager   — open shell inside manager container"
-	@echo ""
-	@echo "$(GREEN)Diagnostics:$(RESET)"
-	@echo "  make config-check    — validate the rendered xray config"
-	@echo ""
-
-# ============================================================================
-# Setup
-# ============================================================================
-
-.PHONY: install
-install: ## Bootstrap a fresh server (run once on a new VPS)
-	@bash scripts/install.sh
-
-.PHONY: init
-init: .env ## Generate Reality keys into .env
-	@bash scripts/generate-keys.sh
-
-.env: .env.example
-	@if [ ! -f .env ]; then \
-		echo "→ Copying .env.example to .env..."; \
-		cp .env.example .env; \
-		chmod 600 .env; \
-		echo "✓ Created .env. Edit it before running 'make init'."; \
-		exit 1; \
-	fi
-
-# ============================================================================
-# Lifecycle
-# ============================================================================
-
-.PHONY: up
-up: ## Start all services
-	docker compose up -d --build
-	@echo ""
-	@echo "✓ Services starting. Check status with: make status"
-	@echo "→ Waiting for services to be healthy..."
-	@sleep 10
-	@if docker compose ps --format json 2>/dev/null | grep -q '"State":"running"'; then \
-		echo "→ Re-syncing users.json to xray runtime..."; \
-		docker compose exec -T manager vpn-user sync 2>/dev/null || \
-			echo "  (skipped — first run, no users yet)"; \
-	fi
-
-.PHONY: down
-down: ## Stop all services
-	docker compose down
-
-.PHONY: restart
-restart: ## Restart all services and re-sync users
-	docker compose restart
-	@sleep 3
-	@echo "→ Re-syncing users to xray runtime..."
-	@docker compose exec -T manager vpn-user sync
-
-.PHONY: status
-status: ## Show service status
-	@docker compose ps
-
-.PHONY: sync
-sync: ## Re-apply users.json to running xray (after restart)
-	@docker compose exec manager vpn-user sync
-
-.PHONY: logs
-logs: ## Tail logs from all services (Ctrl+C to exit)
-	docker compose logs -f
-
-.PHONY: logs-xray
-logs-xray: ## Tail xray logs only
-	docker compose logs -f xray
-
-.PHONY: logs-manager
-logs-manager: ## Tail manager logs only
-	docker compose logs -f manager
-
-
-# ============================================================================
-# Development
-# ============================================================================
-
-.PHONY: rebuild-manager
-rebuild-manager: ## Rebuild manager image after code changes
-	docker compose build manager
-	docker compose up -d --no-deps manager
-	@echo "✓ Manager rebuilt and restarted."
-
-.PHONY: shell-manager
-shell-manager: ## Open bash shell inside manager container
-	docker compose exec manager /bin/bash
-
-# ============================================================================
-# Diagnostics
-# ============================================================================
-
-.PHONY: config-check
-config-check: ## Validate the rendered xray config
-	@if [ ! -f data/xray/config.json ]; then \
-		echo "ERROR: data/xray/config.json not found. Run 'make up' first."; \
-		exit 1; \
-	fi
-	@docker run --rm -v $$(pwd)/data/xray:/etc/xray:ro teddysun/xray \
-		xray -test -config /etc/xray/config.json
-	@echo "✓ Config is valid."
-
-# ============================================================================
-# User management
-# ============================================================================
-
-# Catch-all для позиционных аргументов в add-user / remove-user / show-user.
-# Make парсит "make add-user alice" как два target'а: add-user, alice.
-# Этот rule говорит: для любого target которого мы не знаем — ничего не делать.
-# ВАЖНО: побочный эффект — опечатка в имени target (e.g. "make remov-user")
-# не выдаст ошибку, тихо ничего не сделает. Будь внимателен.
-%:
-	@:
-
-.PHONY: add-user
-add-user: ## Add user(s). Usage: make add-user alice [bob carol]
-	@names="$(filter-out $@,$(MAKECMDGOALS))"; \
-	if [ -z "$$names" ]; then \
-		read -rp "User name(s) (space-separated): " names; \
-	fi; \
-	if [ -z "$$names" ]; then \
-		echo "ERROR: no user names provided" >&2; \
-		exit 1; \
-	fi; \
-	docker compose exec manager vpn-user add $$names
-
-.PHONY: remove-user
-remove-user: ## Remove a user. Usage: make remove-user alice
-	@name="$(filter-out $@,$(MAKECMDGOALS))"; \
-	if [ -z "$$name" ]; then \
-		read -rp "User name: " name; \
-	fi; \
-	if [ -z "$$name" ]; then \
-		echo "ERROR: no user name provided" >&2; \
-		exit 1; \
-	fi; \
-	docker compose exec manager vpn-user remove $$name
-
-.PHONY: list-users
-list-users: ## List all users
-	@docker compose exec manager vpn-user list
-
-.PHONY: show-user
-show-user: ## Show subscription URL & QR. Usage: make show-user alice
-	@name="$(filter-out $@,$(MAKECMDGOALS))"; \
-	if [ -z "$$name" ]; then \
-		read -rp "User name: " name; \
-	fi; \
-	if [ -z "$$name" ]; then \
-		echo "ERROR: no user name provided" >&2; \
-		exit 1; \
-	fi; \
-	docker compose exec manager vpn-user show $$name
-
-.PHONY: rotate-token
-rotate-token: ## Issue new subscription URL. Usage: make rotate-token alice
-	@name="$(filter-out $@,$(MAKECMDGOALS))"; \
-	if [ -z "$$name" ]; then \
-		read -rp "User name: " name; \
-	fi; \
-	if [ -z "$$name" ]; then \
-		echo "ERROR: no user name provided" >&2; \
-		exit 1; \
-	fi; \
-	docker compose exec manager vpn-user rotate-token $$name
-
-# ============================================================================
-# Backup
-# ============================================================================
-
-.PHONY: backup
-backup: ## Create a state backup
-	@sudo /opt/vpn-servers/scripts/backup.sh
-	@echo ""
-	@echo "→ Latest backups:"
-	@sudo ls -lt /var/backups/vpn/ | head -5
+COMPOSE := docker compose
+CLI := $(COMPOSE) run --rm manager python -m manager.cli
+ALEMBIC := $(COMPOSE) run --rm manager alembic
+.PHONY: help install init certs build db.up migrate migrate.upgrade migrate.downgrade migrate.revision render validate validate.rendered predeploy up up.fast down restart status health logs logs-manager logs-xray add-user remove-user disable-user enable-user list-users show-user rotate-token import-legacy sync backup restore deploy-from-scratch shell-manager
+help:
+	@printf "\033[0;36mvpn-servers v0.1 async\033[0m — operator commands\n\n"
+	@printf "\033[0;32mSetup:\033[0m\n  make install                 — bootstrap fresh Ubuntu server: docker, ufw, tools\n  make init                    — create/update .env with Reality keys and random passwords\n  make certs                   — issue certs/fullchain.pem and certs/privkey.pem via standalone certbot\n  make deploy-from-scratch     — build, migrate, render, validate, start, backup\n\n"
+	@printf "\033[0;32mMigrations:\033[0m\n  make migrate                 — alias for migrate.upgrade\n  make migrate.upgrade         — alembic upgrade head\n  make migrate.downgrade       — alembic downgrade -1\n  make migrate.revision MSG=x  — alembic revision --autogenerate\n\n"
+	@printf "\033[0;32mUsers:\033[0m\n  make add-user NAME=name      — add user with default device\n  make remove-user NAME=name   — remove user\n  make disable-user NAME=name  — disable user\n  make enable-user NAME=name   — enable user\n  make list-users              — list users\n  make show-user NAME=name     — show subscription and credentials\n  make rotate-token NAME=name  — rotate default device subscription token\n  make import-legacy FILE=f    — import legacy CSV\n  make sync                    — render configs and restart protocol services\n\n"
+install:
+	sudo ./scripts/install.sh
+init:
+	./scripts/generate-keys.sh
+certs:
+	./scripts/issue-certs-standalone.sh
+build:
+	$(COMPOSE) build
+db.up:
+	$(COMPOSE) up -d postgres
+migrate: migrate.upgrade
+migrate.upgrade: db.up
+	$(ALEMBIC) upgrade head
+migrate.downgrade: db.up
+	$(ALEMBIC) downgrade -1
+migrate.revision: db.up
+	@test -n "$(MSG)" || (echo "Usage: make migrate.revision MSG='message'" && exit 1)
+	$(ALEMBIC) revision --autogenerate -m "$(MSG)"
+render: migrate.upgrade
+	$(CLI) render-configs
+validate: render validate.rendered
+validate.rendered:
+	./scripts/validate-configs.sh
+predeploy:
+	$(COMPOSE) build manager naive
+	$(MAKE) migrate.upgrade
+	$(MAKE) render
+	$(MAKE) validate.rendered
+up: predeploy
+	$(COMPOSE) up -d --build --remove-orphans
+up.fast:
+	$(COMPOSE) up -d --build --remove-orphans
+down:
+	$(COMPOSE) down
+restart:
+	$(COMPOSE) restart
+status:
+	$(COMPOSE) ps
+health:
+	curl -fsS http://127.0.0.1:$${MANAGER_PORT:-8080}/health && echo
+logs:
+	$(COMPOSE) logs -f --tail=200
+logs-manager:
+	$(COMPOSE) logs -f --tail=200 manager
+logs-xray:
+	$(COMPOSE) logs -f --tail=200 xray
+add-user:
+	@test -n "$(NAME)" || (echo "Usage: make add-user NAME=MrNykterstein-PC" && exit 1)
+	$(CLI) add-user "$(NAME)"
+	$(MAKE) sync
+remove-user:
+	@test -n "$(NAME)" || (echo "Usage: make remove-user NAME=MrNykterstein-PC" && exit 1)
+	$(CLI) remove-user "$(NAME)"
+	$(MAKE) sync
+disable-user:
+	@test -n "$(NAME)" || (echo "Usage: make disable-user NAME=MrNykterstein-PC" && exit 1)
+	$(CLI) disable-user "$(NAME)"
+	$(MAKE) sync
+enable-user:
+	@test -n "$(NAME)" || (echo "Usage: make enable-user NAME=MrNykterstein-PC" && exit 1)
+	$(CLI) enable-user "$(NAME)"
+	$(MAKE) sync
+list-users:
+	$(CLI) list-users
+show-user:
+	@test -n "$(NAME)" || (echo "Usage: make show-user NAME=MrNykterstein-PC" && exit 1)
+	$(CLI) show-user "$(NAME)"
+rotate-token:
+	@test -n "$(NAME)" || (echo "Usage: make rotate-token NAME=MrNykterstein-PC" && exit 1)
+	$(CLI) rotate-token "$(NAME)"
+	$(MAKE) sync
+import-legacy:
+	@test -n "$(FILE)" || (echo "Usage: make import-legacy FILE=legacy_users.csv" && exit 1)
+	$(CLI) import-legacy "$(FILE)"
+	$(MAKE) sync
+sync: render validate.rendered
+	$(COMPOSE) up -d --build xray hysteria naive haproxy
+backup:
+	./scripts/backup.sh
+restore:
+	@test -n "$(FILE)" || (echo "Usage: make restore FILE=backups/archive.tar.gz" && exit 1)
+	./scripts/restore-backup.sh "$(FILE)"
+deploy-from-scratch: build migrate.upgrade render validate.rendered up backup
+shell-manager:
+	$(COMPOSE) run --rm manager bash

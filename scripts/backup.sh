@@ -1,34 +1,20 @@
 #!/usr/bin/env bash
-# Создаёт unencrypted локальный бекап критичных файлов.
-# Шифрование делается на стороне клиента (pull-backup.cmd).
-#
-# Запускается из cron под root. Output: /var/backups/vpn/vpn-state-YYYYMMDD-HHMMSS.tar.gz
-# Хранит последние 14 архивов, старые удаляет.
-
 set -euo pipefail
-
-BACKUP_DIR="/var/backups/vpn"
-RETENTION_COUNT=14
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-ARCHIVE="${BACKUP_DIR}/vpn-state-${TIMESTAMP}.tar.gz"
-
-mkdir -p "$BACKUP_DIR"
-chmod 700 "$BACKUP_DIR"
-
-cd /opt/vpn-servers
-
-# Tar critical files. Failure on any missing file is fatal.
-tar czf "$ARCHIVE" \
-    .env \
-    data/users.json \
-    data/xray/config.json
-
-chmod 440 "$ARCHIVE"
-chgrp backup-readers "$ARCHIVE"
-
-# Rotate old backups (keep N most recent).
-ls -1t "$BACKUP_DIR"/vpn-state-*.tar.gz \
-    | tail -n +$((RETENTION_COUNT + 1)) \
-    | xargs -r rm -f
-
-echo "Backup created: $ARCHIVE"
+TS=$(date -u +%Y%m%dT%H%M%SZ)
+DEST="backups/$TS"
+mkdir -p "$DEST"
+echo "→ backing up files to $DEST"
+cp -a .env "$DEST/.env" 2>/dev/null || true
+cp -a certs "$DEST/certs" 2>/dev/null || true
+cp -a rendered "$DEST/rendered" 2>/dev/null || true
+cp -a docker-compose.yml Dockerfile Makefile alembic.ini "$DEST/" 2>/dev/null || true
+cp -a manager migrations scripts "$DEST/" 2>/dev/null || true
+git rev-parse HEAD > "$DEST/git-commit.txt" 2>/dev/null || true
+docker compose ps > "$DEST/docker-ps.txt" 2>/dev/null || true
+docker inspect vpn-manager vpn-xray vpn-haproxy vpn-hysteria vpn-naive vpn-postgres > "$DEST/docker-inspect.json" 2>/dev/null || true
+echo "→ backing up postgres"
+docker compose exec -T postgres pg_dump -U "${POSTGRES_USER:-vpn}" "${POSTGRES_DB:-vpn}" > "$DEST/postgres.sql" 2>/dev/null || echo "WARN: pg_dump failed"
+ARCHIVE="backups/trykuhn-vpn-backup-$TS.tar.gz"
+tar -czf "$ARCHIVE" -C backups "$TS"
+rm -rf "$DEST"
+echo "✓ backup created: $ARCHIVE"
