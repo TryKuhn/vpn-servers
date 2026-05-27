@@ -300,6 +300,10 @@ def build_singbox_subscription(device: Device, settings: Settings) -> dict[str, 
     return build_naive_subscription(device, settings)
 
 
+def _country_flag(code: str) -> str:
+    return "".join(chr(0x1F1E6 + ord(c) - ord("A")) for c in code.upper())
+
+
 def build_vless_xhttp_uri(device: Device, settings: Settings) -> str:
     """VLESS URI для XHTTP+Reality — стандартный формат для v2ray-совместимых клиентов."""
     params = urlencode({
@@ -313,7 +317,8 @@ def build_vless_xhttp_uri(device: Device, settings: Settings) -> str:
         "pbk": settings.reality_public_key,
         "sid": settings.reality_short_id,
     })
-    name = quote(settings.subscription_profile_title, safe="")
+    display_name = f"{_country_flag(settings.server_country)} {settings.subscription_profile_title} @{device.user.name}{device.name}"
+    name = quote(display_name, safe="")
     return f"vless://{device.vless_uuid}@{settings.public_domain}:{settings.public_tcp_port}?{params}#{name}"
 
 

@@ -34,6 +34,7 @@ class Settings(BaseSettings):
 
     subscription_base_url: str = "https://trykuhn.xyz/sub"
     subscription_profile_title: str = "TryKuhn VPN"
+    server_country: str = "FI"
 
     fallback_auth_username: str = "fallback"
     fallback_auth_password: str = "change_me"
