@@ -66,6 +66,8 @@ services:
       - ./rendered/hysteria/config.yaml:/etc/hysteria/config.yaml:ro
       - ./certs:/certs:ro
     command: ["server", "-c", "/etc/hysteria/config.yaml"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "hysteria", "version"]
       interval: 30s
