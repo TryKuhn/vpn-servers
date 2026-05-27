@@ -9,6 +9,7 @@ from manager.config import Settings, get_settings
 from manager.db import get_session
 from manager.repository import get_device_by_token, record_subscription_request
 from manager.subscriptions import (
+    build_hysteria2_subscription,
     build_hysteria_subscription,
     build_naive_subscription,
     build_v2ray_subscription,
@@ -133,20 +134,31 @@ async def subscription_v2ray(
     """
     device = await _load_device_or_404(token, request, session)
     content = build_v2ray_subscription(device, settings)
+    return _plain_sub_response(content, device, settings, "v2ray")
 
+
+def _plain_sub_response(content: str, device, settings: Settings, profile: str) -> Response:
     filename_user = device.user.name.replace(" ", "-")
     filename_device = device.name.replace(" ", "-")
-
-    headers = {
-        "profile-title": settings.subscription_profile_title,
-        "subscription-userinfo": "upload=0; download=0; total=0; expire=0",
-        "content-disposition": (
-            f'attachment; filename="{filename_user}-{filename_device}-v2ray.txt"'
-        ),
-    }
-
     return Response(
         content=content,
         media_type="text/plain; charset=utf-8",
-        headers=headers,
+        headers={
+            "profile-title": settings.subscription_profile_title,
+            "subscription-userinfo": "upload=0; download=0; total=0; expire=0",
+            "content-disposition": f'attachment; filename="{filename_user}-{filename_device}-{profile}.txt"',
+        },
     )
+
+
+@app.get("/sub/hy/{token}")
+async def subscription_hysteria2_uri(
+    token: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """Base64 Hysteria2 URI для V2RayTun, NekoBox и аналогов."""
+    device = await _load_device_or_404(token, request, session)
+    content = build_hysteria2_subscription(device, settings)
+    return _plain_sub_response(content, device, settings, "hy2")

@@ -119,7 +119,11 @@ def show_user(name: str = typer.Argument(...)):
                 typer.echo(f"    {root_url}/sub/naive/{token}")
 
                 typer.echo("")
-                typer.echo("  Hysteria2:")
+                typer.echo("  Hysteria2 — V2RayTun / NekoBox (base64 URI):")
+                typer.echo(f"    {root_url}/sub/hy/{token}")
+
+                typer.echo("")
+                typer.echo("  Hysteria2 — sing-box JSON config:")
                 typer.echo(f"    {root_url}/sub/hysteria/{token}")
 
                 typer.echo("")

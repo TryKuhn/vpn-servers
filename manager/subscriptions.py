@@ -304,6 +304,24 @@ def _country_flag(code: str) -> str:
     return "".join(chr(0x1F1E6 + ord(c) - ord("A")) for c in code.upper())
 
 
+def build_hysteria2_uri(device: Device, settings: Settings) -> str:
+    """Hysteria2 URI для V2RayTun и аналогов. userpass-auth передаётся как user:pass@ в URI."""
+    params = urlencode({
+        "sni": settings.hysteria_domain,
+    })
+    display_name = f"{_country_flag(settings.server_country)} {settings.subscription_profile_title} @{device.user.name}{device.name}"
+    name = quote(display_name, safe="")
+    user = quote(device.hysteria_username, safe="")
+    password = quote(device.hysteria_password, safe="")
+    return f"hysteria2://{user}:{password}@{settings.hysteria_domain}:{settings.public_udp_port}?{params}#{name}"
+
+
+def build_hysteria2_subscription(device: Device, settings: Settings) -> str:
+    """Base64-encoded Hysteria2 URI — стандартный subscription формат."""
+    uri = build_hysteria2_uri(device, settings)
+    return base64.b64encode(uri.encode()).decode()
+
+
 def build_vless_xhttp_uri(device: Device, settings: Settings) -> str:
     """VLESS URI для XHTTP+Reality — стандартный формат для v2ray-совместимых клиентов."""
     params = urlencode({
@@ -323,6 +341,9 @@ def build_vless_xhttp_uri(device: Device, settings: Settings) -> str:
 
 
 def build_v2ray_subscription(device: Device, settings: Settings) -> str:
-    """Base64-encoded список VLESS URI — стандартный subscription формат для V2RayTun и аналогов."""
-    uri = build_vless_xhttp_uri(device, settings)
-    return base64.b64encode(uri.encode()).decode()
+    """Base64-encoded список URI — стандартный subscription формат для V2RayTun и аналогов."""
+    uris = [
+        build_vless_xhttp_uri(device, settings),
+        build_hysteria2_uri(device, settings),
+    ]
+    return base64.b64encode("\n".join(uris).encode()).decode()
