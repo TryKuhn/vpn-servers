@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import quote, urlencode
 
 from manager.config import Settings
 from manager.models import Device
@@ -296,3 +298,26 @@ def build_xray_xhttp_subscription(device: Device, settings: Settings) -> dict[st
 
 def build_singbox_subscription(device: Device, settings: Settings) -> dict[str, Any]:
     return build_naive_subscription(device, settings)
+
+
+def build_vless_xhttp_uri(device: Device, settings: Settings) -> str:
+    """VLESS URI для XHTTP+Reality — стандартный формат для v2ray-совместимых клиентов."""
+    params = urlencode({
+        "encryption": "none",
+        "type": "xhttp",
+        "path": settings.xhttp_path,
+        "mode": "auto",
+        "security": "reality",
+        "sni": settings.reality_sni,
+        "fp": settings.client_fingerprint,
+        "pbk": settings.reality_public_key,
+        "sid": settings.reality_short_id,
+    })
+    name = quote(settings.subscription_profile_title, safe="")
+    return f"vless://{device.vless_uuid}@{settings.public_domain}:{settings.public_tcp_port}?{params}#{name}"
+
+
+def build_v2ray_subscription(device: Device, settings: Settings) -> str:
+    """Base64-encoded список VLESS URI — стандартный subscription формат для V2RayTun и аналогов."""
+    uri = build_vless_xhttp_uri(device, settings)
+    return base64.b64encode(uri.encode()).decode()

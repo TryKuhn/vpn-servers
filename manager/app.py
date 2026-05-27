@@ -11,6 +11,7 @@ from manager.repository import get_device_by_token, record_subscription_request
 from manager.subscriptions import (
     build_hysteria_subscription,
     build_naive_subscription,
+    build_v2ray_subscription,
     build_xray_xhttp_subscription,
     device_is_allowed,
 )
@@ -117,3 +118,35 @@ async def subscription_xray(
     device = await _load_device_or_404(token, request, session)
     payload = build_xray_xhttp_subscription(device, settings)
     return _json_response(payload, device, settings, "xray-xhttp")
+
+
+@app.get("/sub/v2ray/{token}")
+async def subscription_v2ray(
+    token: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """
+    Стандартный subscription формат для V2RayTun, NekoBox, Hiddify и аналогов.
+    Возвращает base64-encoded список VLESS URI (XHTTP+Reality).
+    """
+    device = await _load_device_or_404(token, request, session)
+    content = build_v2ray_subscription(device, settings)
+
+    filename_user = device.user.name.replace(" ", "-")
+    filename_device = device.name.replace(" ", "-")
+
+    headers = {
+        "profile-title": settings.subscription_profile_title,
+        "subscription-userinfo": "upload=0; download=0; total=0; expire=0",
+        "content-disposition": (
+            f'attachment; filename="{filename_user}-{filename_device}-v2ray.txt"'
+        ),
+    }
+
+    return Response(
+        content=content,
+        media_type="text/plain; charset=utf-8",
+        headers=headers,
+    )

@@ -123,7 +123,11 @@ def show_user(name: str = typer.Argument(...)):
                 typer.echo(f"    {root_url}/sub/hysteria/{token}")
 
                 typer.echo("")
-                typer.echo("  Xray VLESS Reality XHTTP:")
+                typer.echo("  V2RayTun / NekoBox (VLESS XHTTP+Reality, base64 URI):")
+                typer.echo(f"    {root_url}/sub/v2ray/{token}")
+
+                typer.echo("")
+                typer.echo("  Xray JSON config (ручной импорт):")
                 typer.echo(f"    {root_url}/sub/xray/{token}")
 
                 typer.echo("")
