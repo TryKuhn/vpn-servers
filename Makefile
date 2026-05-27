@@ -31,7 +31,7 @@ render: migrate.upgrade
 	$(CLI) render-configs
 validate: render validate.rendered
 validate.rendered:
-	./scripts/validate-configs.sh
+	bash ./scripts/validate-configs.sh
 predeploy:
 	$(COMPOSE) build manager naive
 	$(MAKE) migrate.upgrade
@@ -95,7 +95,7 @@ backup:
 	bash ./scripts/backup.sh
 restore:
 	@test -n "$(FILE)" || (echo "Usage: make restore FILE=backups/archive.tar.gz" && exit 1)
-	./scripts/restore-backup.sh "$(FILE)"
+	bash ./scripts/restore-backup.sh "$(FILE)"
 deploy-from-scratch: build migrate.upgrade render validate.rendered up backup
 shell-manager:
 	$(COMPOSE) run --rm manager bash
