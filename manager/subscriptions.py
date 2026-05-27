@@ -405,3 +405,117 @@ def build_karing_subscription(device: Device, settings: Settings) -> dict[str, A
             },
         ]
     }
+
+
+def build_clash_meta_config(device: Device, settings: Settings) -> dict[str, Any]:
+    """
+    Clash Meta (Mihomo) YAML-конфиг: Hysteria2 + VLESS XHTTP+Reality + NaiveProxy.
+
+    NaiveProxy выставляется как HTTP CONNECT proxy с TLS — Caddy forward_proxy
+    принимает стандартный HTTP CONNECT, поэтому совместимость сохраняется.
+    VLESS XHTTP+Reality требует Mihomo >= 1.19.
+    """
+    flag = _country_flag(settings.server_country)
+    title = settings.subscription_profile_title
+    suffix = f"@{device.user.name}{device.name}"
+
+    name_hy = f"{flag} {title} Hysteria2 {suffix}"
+    name_vless = f"{flag} {title} VLESS {suffix}"
+    name_naive = f"{flag} {title} NaiveProxy {suffix}"
+    all_proxy_names = [name_hy, name_vless, name_naive]
+
+    hysteria_password = f"{device.hysteria_username}:{device.hysteria_password}"
+
+    proxies = [
+        {
+            "name": name_hy,
+            "type": "hysteria2",
+            "server": settings.hysteria_domain,
+            "port": settings.public_udp_port,
+            "password": hysteria_password,
+            "sni": settings.hysteria_domain,
+            "skip-cert-verify": False,
+        },
+        {
+            "name": name_vless,
+            "type": "vless",
+            "server": settings.public_domain,
+            "port": settings.public_tcp_port,
+            "uuid": str(device.vless_uuid),
+            "network": "xhttp",
+            "tls": True,
+            "client-fingerprint": settings.client_fingerprint,
+            "servername": settings.reality_sni,
+            "reality-opts": {
+                "public-key": settings.reality_public_key,
+                "short-id": settings.reality_short_id,
+            },
+            "xhttp-opts": {
+                "path": settings.xhttp_path,
+                "mode": "auto",
+            },
+        },
+        {
+            "name": name_naive,
+            "type": "http",
+            "server": settings.naive_domain,
+            "port": settings.public_tcp_port,
+            "username": device.naive_username,
+            "password": device.naive_password,
+            "tls": True,
+            "sni": settings.naive_domain,
+            "skip-cert-verify": False,
+        },
+    ]
+
+    proxy_groups = [
+        {
+            "name": "🚀 PROXY",
+            "type": "select",
+            "proxies": ["⚡ Auto"] + all_proxy_names + ["DIRECT"],
+        },
+        {
+            "name": "⚡ Auto",
+            "type": "url-test",
+            "url": "http://www.gstatic.com/generate_204",
+            "interval": 300,
+            "tolerance": 50,
+            "proxies": all_proxy_names,
+        },
+    ]
+
+    own = _own_domains(settings)
+    direct_domains = sorted(own) + RU_DIRECT_DOMAINS
+
+    nameserver_policy = {
+        f"+.{domain}": "system" for domain in direct_domains
+    }
+
+    rules = []
+    for domain in direct_domains:
+        rules.append(f"DOMAIN-SUFFIX,{domain},DIRECT")
+    rules += [
+        "DST-PORT,25,REJECT",
+        "DST-PORT,465,REJECT",
+        "DST-PORT,587,REJECT",
+        "MATCH,🚀 PROXY",
+    ]
+
+    return {
+        "mixed-port": 7890,
+        "allow-lan": False,
+        "ipv6": False,
+        "mode": "rule",
+        "log-level": "warning",
+        "unified-delay": True,
+        "dns": {
+            "enable": True,
+            "ipv6": False,
+            "enhanced-mode": "redir-host",
+            "nameserver": ["8.8.8.8", "1.1.1.1"],
+            "nameserver-policy": nameserver_policy,
+        },
+        "proxies": proxies,
+        "proxy-groups": proxy_groups,
+        "rules": rules,
+    }

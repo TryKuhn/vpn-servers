@@ -133,6 +133,10 @@ def show_user(name: str = typer.Argument(...)):
                 typer.echo(f"  vless_uuid: {device.vless_uuid}")
 
                 typer.echo("")
+                typer.echo("  Clash Meta / Mihomo (YAML: Hysteria2 + VLESS + NaiveProxy):")
+                typer.echo(f"    {root_url}/sub/clash/{token}")
+
+                typer.echo("")
                 typer.echo("  Karing / Hiddify (sing-box: Hysteria2 + NaiveProxy):")
                 typer.echo(f"    {root_url}/sub/karing/{token}")
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+import yaml
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +10,7 @@ from manager.config import Settings, get_settings
 from manager.db import get_session
 from manager.repository import get_device_by_token, record_subscription_request
 from manager.subscriptions import (
+    build_clash_meta_config,
     build_hysteria2_subscription,
     build_hysteria_subscription,
     build_karing_subscription,
@@ -190,3 +192,31 @@ async def subscription_karing(
     device = await _load_device_or_404(token, request, session)
     payload = build_karing_subscription(device, settings)
     return _json_response(payload, device, settings, "karing")
+
+
+@app.get("/sub/clash/{token}")
+async def subscription_clash_meta(
+    token: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """Clash Meta (Mihomo) YAML-конфиг: Hysteria2 + VLESS XHTTP+Reality + NaiveProxy."""
+    device = await _load_device_or_404(token, request, session)
+    payload = build_clash_meta_config(device, settings)
+
+    body = yaml.dump(payload, allow_unicode=True, default_flow_style=False, sort_keys=False)
+
+    filename_user = device.user.name.replace(" ", "-")
+    filename_device = device.name.replace(" ", "-")
+    return Response(
+        content=body,
+        media_type="text/yaml; charset=utf-8",
+        headers={
+            "profile-title": settings.subscription_profile_title,
+            "subscription-userinfo": "upload=0; download=0; total=0; expire=0",
+            "content-disposition": (
+                f'attachment; filename="{filename_user}-{filename_device}-clash.yaml"'
+            ),
+        },
+    )
