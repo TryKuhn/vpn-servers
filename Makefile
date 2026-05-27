@@ -82,7 +82,12 @@ rotate-token:
 	$(MAKE) sync
 import-legacy:
 	@test -n "$(FILE)" || (echo "Usage: make import-legacy FILE=legacy_users.csv" && exit 1)
-	$(CLI) import-legacy "$(FILE)"
+	@FILE_ABS="$$(realpath "$(FILE)")"; \
+	echo "→ Importing legacy users from $$FILE_ABS"; \
+	docker compose run --rm \
+		-v "$$FILE_ABS:/tmp/legacy_users.csv:ro" \
+		manager \
+		python -m manager.cli import-legacy /tmp/legacy_users.csv
 	$(MAKE) sync
 sync: render validate.rendered
 	$(COMPOSE) up -d --build xray hysteria naive haproxy

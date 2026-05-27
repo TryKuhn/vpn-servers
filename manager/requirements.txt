@@ -8,3 +8,5 @@ typer==0.15.1
 PyYAML==6.0.2
 qrcode==8.0
 python-dateutil==2.9.0.post0
+click==8.1.8
+typer==0.15.1
