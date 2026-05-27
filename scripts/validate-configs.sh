@@ -15,6 +15,8 @@ echo "→ validate HAProxy"
 TMP_HAPROXY_DIR="$(mktemp -d)"
 TMP_HAPROXY_CFG="$TMP_HAPROXY_DIR/haproxy.cfg"
 
+chmod 755 "$TMP_HAPROXY_DIR"
+
 sed \
   -e 's/server xray xray:1443 check/server xray 127.0.0.1:1443 check/' \
   -e 's/server naive naive:2443 check/server naive 127.0.0.1:2443 check/' \
@@ -23,6 +25,7 @@ sed \
 chmod 644 "$TMP_HAPROXY_CFG"
 
 docker run --rm \
+  --user 0:0 \
   -v "$TMP_HAPROXY_DIR:/usr/local/etc/haproxy:ro" \
   "haproxy:${HAPROXY_VERSION:-3.0-alpine}" \
   haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
