@@ -41,6 +41,9 @@ class Settings(BaseSettings):
 
     rendered_dir: str = "rendered"
 
+    warp_proxy_host: str = "host.docker.internal"
+    warp_proxy_port: int = 40000
+
 
 @lru_cache
 def get_settings() -> Settings:

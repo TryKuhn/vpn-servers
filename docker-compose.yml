@@ -48,6 +48,8 @@ services:
     volumes:
       - ./rendered/xray/config.json:/etc/xray/config.json:ro
     command: ["run", "-c", "/etc/xray/config.json"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "xray", "run", "-test", "-c", "/etc/xray/config.json"]
       interval: 30s
