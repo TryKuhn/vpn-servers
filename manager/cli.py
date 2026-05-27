@@ -40,7 +40,7 @@ def cli_list_users():
 @app.command("show-user")
 def show_user(name: str = typer.Argument(...)):
     async def _inner():
-        from sqlalchemy import select
+        from sqlalchemy import or_, select
         from sqlalchemy.orm import selectinload
 
         from manager.models import Device, User
@@ -62,19 +62,40 @@ def show_user(name: str = typer.Argument(...)):
             if user is None:
                 result = await session.execute(
                     select(Device)
+                    .join(Device.user)
                     .options(selectinload(Device.user))
-                    .where(Device.name == name)
+                    .where(
+                        or_(
+                            Device.name == name,
+                            (User.name + "-" + Device.name) == name,
+                        )
+                    )
                 )
-                device = result.scalar_one_or_none()
+                matched_devices = list(result.scalars().all())
 
-                if device is None:
+                if len(matched_devices) == 0:
                     typer.echo(f"User or device not found: {name}")
                     raise typer.Exit(1)
 
+                if len(matched_devices) > 1:
+                    typer.echo(f"Device name is ambiguous: {name}")
+                    typer.echo("")
+                    typer.echo("Matched devices:")
+                    for device in matched_devices:
+                        typer.echo(f"  {device.user.name} / {device.name} ({device.os or 'unknown OS'})")
+                    typer.echo("")
+                    typer.echo("Use:")
+                    typer.echo("  make show-user NAME=<user-name>")
+                    typer.echo("")
+                    typer.echo("Example:")
+                    typer.echo("  make show-user NAME=MrNykterstein")
+                    raise typer.Exit(1)
+
+                device = matched_devices[0]
                 user = device.user
                 devices = [device]
             else:
-                devices = list(user.devices)
+                devices = sorted(list(user.devices), key=lambda d: d.name.lower())
 
             typer.echo(f"User: {user.name}")
             typer.echo(f"Status: {'enabled' if user.enabled else 'disabled'}")

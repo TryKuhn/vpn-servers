@@ -54,7 +54,7 @@ def _base_dns(settings: Settings) -> dict[str, Any]:
         "servers": [
             {
                 "tag": "local",
-                "address": "local",
+                "type": "local",
             }
         ],
         "rules": [
