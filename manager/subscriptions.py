@@ -24,6 +24,7 @@ RU_DIRECT_DOMAINS = [
     "vk.ru",
     "mail.ru",
     "ok.ru",
+    "hse.ru",
 ]
 
 
