@@ -409,38 +409,30 @@ def build_karing_subscription(device: Device, settings: Settings) -> dict[str, A
 
 def build_clash_meta_config(device: Device, settings: Settings) -> dict[str, Any]:
     """
-    Clash Meta (Mihomo) YAML-конфиг: VLESS XHTTP+Reality (основной) + Hysteria2 (ручной fallback).
+    Clash Meta (Mihomo) YAML-конфиг: NaiveProxy (основной) + Hysteria2 (ручной fallback).
 
-    VLESS XHTTP+Reality требует Mihomo >= 1.19.
+    VLESS XHTTP не включён — Mihomo не поддерживает XHTTP transport стабильно.
     """
     flag = _country_flag(settings.server_country)
     title = settings.subscription_profile_title
     suffix = f"@{device.user.name}{device.name}"
 
-    name_vless = f"{flag} {title} VLESS {suffix}"
+    name_naive = f"{flag} {title} NaiveProxy {suffix}"
     name_hy = f"{flag} {title} Hysteria2 {suffix}"
 
     hysteria_password = f"{device.hysteria_username}:{device.hysteria_password}"
 
     proxies = [
         {
-            "name": name_vless,
-            "type": "vless",
-            "server": settings.public_domain,
+            "name": name_naive,
+            "type": "http",
+            "server": settings.naive_domain,
             "port": settings.public_tcp_port,
-            "uuid": str(device.vless_uuid),
-            "network": "xhttp",
+            "username": device.naive_username,
+            "password": device.naive_password,
             "tls": True,
-            "client-fingerprint": settings.client_fingerprint,
-            "servername": settings.reality_sni,
-            "reality-opts": {
-                "public-key": settings.reality_public_key,
-                "short-id": settings.reality_short_id,
-            },
-            "xhttp-opts": {
-                "path": settings.xhttp_path,
-                "mode": "auto",
-            },
+            "sni": settings.naive_domain,
+            "skip-cert-verify": False,
         },
         {
             "name": name_hy,
@@ -457,7 +449,7 @@ def build_clash_meta_config(device: Device, settings: Settings) -> dict[str, Any
         {
             "name": "🚀 PROXY",
             "type": "select",
-            "proxies": [name_vless, name_hy, "DIRECT"],
+            "proxies": [name_naive, name_hy, "DIRECT"],
         },
     ]
 
