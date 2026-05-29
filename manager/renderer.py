@@ -39,7 +39,7 @@ def build_xray_config(devices: list[Device], settings: Settings) -> dict:
             "streamSettings": {"network": "xhttp", "security": "reality", "xhttpSettings": {"path": settings.xhttp_path, "mode": "auto"}, "realitySettings": {"show": False, "target": settings.reality_target, "serverNames": [settings.reality_sni], "privateKey": settings.reality_private_key, "shortIds": [settings.reality_short_id]}},
             "sniffing": {"enabled": True, "destOverride": ["http", "tls", "quic"], "metadataOnly": False},
         }],
-        "routing": {"domainStrategy": "AsIs", "rules": [
+        "routing": {"domainStrategy": "UseIPv4", "rules": [
             {"type": "field", "domain": ["domain:anthropic.com", "domain:claude.ai"], "outboundTag": "warp"},
             {"type": "field", "protocol": ["bittorrent"], "outboundTag": "block"},
             {"type": "field", "port": "25,465,587", "network": "tcp", "outboundTag": "block"},

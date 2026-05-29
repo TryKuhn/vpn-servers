@@ -367,7 +367,6 @@ def build_v2ray_subscription(device: Device, settings: Settings) -> str:
     """Base64-encoded список URI — стандартный subscription формат для V2RayTun и аналогов."""
     uris = [
         build_vless_xhttp_uri(device, settings),
-        build_hysteria2_uri(device, settings),
     ]
     return base64.b64encode("\n".join(uris).encode()).decode()
 
@@ -410,33 +409,20 @@ def build_karing_subscription(device: Device, settings: Settings) -> dict[str, A
 
 def build_clash_meta_config(device: Device, settings: Settings) -> dict[str, Any]:
     """
-    Clash Meta (Mihomo) YAML-конфиг: Hysteria2 + VLESS XHTTP+Reality + NaiveProxy.
+    Clash Meta (Mihomo) YAML-конфиг: VLESS XHTTP+Reality (основной) + Hysteria2 (ручной fallback).
 
-    NaiveProxy выставляется как HTTP CONNECT proxy с TLS — Caddy forward_proxy
-    принимает стандартный HTTP CONNECT, поэтому совместимость сохраняется.
     VLESS XHTTP+Reality требует Mihomo >= 1.19.
     """
     flag = _country_flag(settings.server_country)
     title = settings.subscription_profile_title
     suffix = f"@{device.user.name}{device.name}"
 
-    name_hy = f"{flag} {title} Hysteria2 {suffix}"
     name_vless = f"{flag} {title} VLESS {suffix}"
-    name_naive = f"{flag} {title} NaiveProxy {suffix}"
-    all_proxy_names = [name_hy, name_vless, name_naive]
+    name_hy = f"{flag} {title} Hysteria2 {suffix}"
 
     hysteria_password = f"{device.hysteria_username}:{device.hysteria_password}"
 
     proxies = [
-        {
-            "name": name_hy,
-            "type": "hysteria2",
-            "server": settings.hysteria_domain,
-            "port": settings.public_udp_port,
-            "password": hysteria_password,
-            "sni": settings.hysteria_domain,
-            "skip-cert-verify": False,
-        },
         {
             "name": name_vless,
             "type": "vless",
@@ -457,14 +443,12 @@ def build_clash_meta_config(device: Device, settings: Settings) -> dict[str, Any
             },
         },
         {
-            "name": name_naive,
-            "type": "http",
-            "server": settings.naive_domain,
-            "port": settings.public_tcp_port,
-            "username": device.naive_username,
-            "password": device.naive_password,
-            "tls": True,
-            "sni": settings.naive_domain,
+            "name": name_hy,
+            "type": "hysteria2",
+            "server": settings.hysteria_domain,
+            "port": settings.public_udp_port,
+            "password": hysteria_password,
+            "sni": settings.hysteria_domain,
             "skip-cert-verify": False,
         },
     ]
@@ -473,15 +457,7 @@ def build_clash_meta_config(device: Device, settings: Settings) -> dict[str, Any
         {
             "name": "🚀 PROXY",
             "type": "select",
-            "proxies": ["⚡ Auto"] + all_proxy_names + ["DIRECT"],
-        },
-        {
-            "name": "⚡ Auto",
-            "type": "url-test",
-            "url": "http://www.gstatic.com/generate_204",
-            "interval": 300,
-            "tolerance": 50,
-            "proxies": all_proxy_names,
+            "proxies": [name_vless, name_hy, "DIRECT"],
         },
     ]
 
