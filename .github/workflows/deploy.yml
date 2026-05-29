@@ -46,6 +46,7 @@ jobs:
           git reset --hard origin/main
           if ! make predeploy; then echo "✗ predeploy failed; rolling back git to $OLD_COMMIT"; git reset --hard "$OLD_COMMIT"; exit 1; fi
           make up.fast
+          docker compose restart xray hysteria naive haproxy
           DEADLINE=$(($(date +%s) + HEALTH_TIMEOUT))
           HEALTHY=0
           INITIAL_MANAGER_RESTARTS=$(docker inspect --format '{{.RestartCount}}' vpn-manager 2>/dev/null || echo 0)
